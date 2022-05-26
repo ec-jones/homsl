@@ -1,0 +1,69 @@
+cabal-version:      3.0
+name:               homsl
+version:            0.1.0.0
+license:            MIT
+license-file:       LICENSE
+category:           Verification
+
+library saturation
+  exposed-modules:  Binder,
+                    Syntax,
+                    Parser,
+                    Resolve,
+
+  other-modules:
+
+  hs-source-dirs:   src
+
+  build-depends:    base,
+                    mtl,
+                    hashable,
+                    parsec,
+                    unordered-containers
+
+  ghc-options:      -Wall
+                    -Wcompat
+                    -Widentities
+                    -Wincomplete-uni-patterns
+                    -Wincomplete-record-updates
+                    -Wredundant-constraints
+                    -Wmissing-export-lists
+                    -Wpartial-fields
+                    -Wmissing-deriving-strategies
+                    -Wunused-packages
+
+                    -Wno-unused-matches
+                    -Wno-name-shadowing
+                    -Wno-unused-local-binds
+  
+  default-language: Haskell2010
+
+
+-- library verified-effects
+--   exposed-modules:  Tracer
+
+--   hs-source-dirs:   src
+
+--   build-depends:    base,
+--                     mtl,
+--                     free,
+--                     selective,
+--                     unordered-containers,
+--                     hashable
+
+--   ghc-options:      -Wall
+--                     -Wcompat
+--                     -Widentities
+--                     -Wincomplete-uni-patterns
+--                     -Wincomplete-record-updates
+--                     -Wredundant-constraints
+--                     -Wmissing-export-lists
+--                     -Wpartial-fields
+--                     -Wmissing-deriving-strategies
+--                     -Wunused-packages
+
+--                     -Wno-unused-matches
+--                     -Wno-name-shadowing
+--                     -Wno-unused-local-binds
+  
+--   default-language: Haskell2010
