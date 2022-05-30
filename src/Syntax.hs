@@ -48,15 +48,15 @@ data Term
     Var_ {-# UNPACK #-} !Var
   | -- | Application.
     App Term Term
-  deriving stock (Eq, Show, Generic)
+  deriving stock (Eq, Generic)
   deriving anyclass (FreeVars, Hashable)
 
--- instance Show Term where
---   showsPrec p (Var x) = showString x
---   showsPrec p (Sym f) = showString f
---   showsPrec p (App fun arg) =
---     showParen (p > 10) $
---       showsPrec 0 fun . showString " " . showsPrec 11 arg
+instance Show Term where
+  showsPrec p (Var x) = showString x
+  showsPrec p (Sym f) = showString f
+  showsPrec p (App fun arg) =
+    showParen (p > 10) $
+      showsPrec 0 fun . showString " " . showsPrec 11 arg
 
 {-# COMPLETE Var, Sym, App #-}
 
@@ -97,37 +97,48 @@ data Formula
       (Binder (Formula :=> Formula))
   | Exists_
       (Binder Formula)
-  deriving stock (Eq, Show, Generic)
+  deriving stock (Eq, Generic)
   deriving anyclass (Hashable, FreeVars)
 
 -- | An implication between formula.
 data a :=> b
   = {-# UNPACK #-} !a
       :=> {-# UNPACK #-} !b
-  deriving stock (Eq, Show, Generic)
+  deriving stock (Eq, Generic)
   deriving anyclass (Hashable, FreeVars)
 
--- instance Show Formula where
---   showsPrec = let ?scope = HashSet.empty in showScoped
---     where
---       showScoped :: (?scope :: Scope) => Int -> Formula -> ShowS
---       showScoped p (Atom tm) = showsPrec p tm
---       showScoped p (Conj fs) =
---         showParen (p > 10) $ go fs
---         where
---           go [] = id
---           go [x] = showScoped p x
---           go (x : xs) =
---             showScoped p x . showString " /\\ " . go xs
---       showScoped p (Clause xs body head) =
---         showString "forall"
---           . foldl' (\k x -> k . showString " " . showString x) id xs
---           . showString ". "
---           . showScoped 0 body
---           . showString " => "
---           . showScoped 11 head
---       showScoped p (Exists x body) =
---         showString "exists " . showString x . showString ". " . showScoped 11 body
+instance Show Formula where
+  showsPrec = let ?scope = HashSet.empty in showScoped
+    where
+      showScoped :: (?scope :: Scope) => Int -> Formula -> ShowS
+      showScoped p Ff = showString "false"
+      showScoped p (Atom tm) = showsPrec p tm
+      showScoped p (Conj []) = showString "true"
+      showScoped p (Conj fs) =
+        showParen (p > 10) $ showConjs fs
+        where
+          showConjs [] = id
+          showConjs [x] = showScoped p x
+          showConjs (x : xs) =
+            showScoped p x . showString " /\\ " . showConjs xs
+      showScoped p (Clause xs body head) =
+        showBind
+          . showBody body
+          . showScoped 0 head
+        where
+          showBind
+            | null xs = id
+            | otherwise =
+                showString "forall"
+                  . foldl' (\k x -> k . showString " " . showString x) id xs
+                  . showString ". "
+
+          showBody (Conj []) = id
+          showBody body =
+            showScoped 0 body
+              . showString " => "
+      showScoped p (Exists x body) =
+        showString "exists " . showString x . showString ". " . showScoped 11 body
 
 {-# COMPLETE Ff, Atom, Conj, Clause, Exists #-}
 
@@ -171,7 +182,7 @@ pattern Clause xs body head <-
           Clause (xs ++ ys) (Conj [body, body']) head'
     Clause xs body head =
       let xs' = (freeVars head `List.union` freeVars body) `List.intersect` xs
-      in Clause_ (Binder xs' (body :=> head))
+       in Clause_ (Binder xs' (body :=> head))
 
 -- | An existential quantification.
 pattern Exists ::

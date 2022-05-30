@@ -33,41 +33,55 @@ test =
   saturate $
     parseClauses
       "forall x1 x2. P x1 /\\ P x2 /\\ P G => P (F x1 x2); \
-      \ forall . true => P G; \
-      \ forall . exists z. P (z G) => false "
+      \ P G; \
+      \ exists z. P (z G) => false "
 
 -- * Clause Set
 
 -- | A collection of automaton clauses groupped by head symbol.
-type ClauseSet =
-  HashMap.HashMap String (HashSet.HashSet Formula)
+newtype ClauseSet
+  = ClauseSet
+      ( HashMap.HashMap String (HashSet.HashSet Formula)
+      )
+
+instance Semigroup ClauseSet where
+  ClauseSet xs <> ClauseSet ys =
+    ClauseSet (HashMap.unionWith HashSet.union xs ys)
+
+instance Monoid ClauseSet where
+  mempty = ClauseSet mempty
+
+instance Show ClauseSet where
+  show (ClauseSet xs) =
+    unlines ((++ ";") <$> foldMap (fmap show . HashSet.toList) xs)
 
 -- | Find all clauses in a given with head symbol.
 lookupClauses :: String -> ClauseSet -> HashSet.HashSet Formula
-lookupClauses = HashMap.lookupDefault HashSet.empty
+lookupClauses x (ClauseSet clss) = 
+  HashMap.lookupDefault HashSet.empty x clss
 
 -- | Create a clause set from a formula.
 toClauseSet :: (?scope :: Scope) => Formula -> Maybe ClauseSet
-toClauseSet = go HashMap.empty
+toClauseSet = go (ClauseSet HashMap.empty)
   where
     go :: (?scope :: Scope) => ClauseSet -> Formula -> Maybe ClauseSet
-    go acc head
+    go (ClauseSet acc) head
       | Just p <- isAutoHead head =
           let hs = HashSet.singleton head
-           in Just (HashMap.insertWith HashSet.union p hs acc)
+           in Just (ClauseSet $ HashMap.insertWith HashSet.union p hs acc)
     go acc (Conj ps) =
       foldM go acc ps
-    go acc f@(Clause xs body head)
+    go (ClauseSet acc) f@(Clause xs body head)
       | Just p <- isAutoHead head,
         isAutoBody body =
           let hs = HashSet.singleton f
-           in Just (HashMap.insertWith HashSet.union p hs acc)
+           in Just (ClauseSet $ HashMap.insertWith HashSet.union p hs acc)
       | otherwise = Nothing
     go acc _ = Nothing
 
 -- | Convert a clause set into a formula.
 fromClauseSet :: ClauseSet -> Formula
-fromClauseSet = Conj . foldMap HashSet.toList
+fromClauseSet (ClauseSet clss) = Conj $ foldMap HashSet.toList clss
 
 -- | Check if a term is a valid head returning the predicate.
 isAutoHead :: Formula -> Maybe String
@@ -91,7 +105,7 @@ isAutoBody (Exists _ _) = False
 -- | Saturate a given set of formulas.
 saturate :: [Formula] -> ClauseSet
 saturate =
-  let ?autoClauses = HashMap.empty
+  let ?autoClauses = mempty
       ?scope = HashSet.empty
    in go
   where
@@ -101,7 +115,7 @@ saturate =
       ClauseSet
     go fs =
       let (fs', autoClauses) = partitionMaybe toClauseSet fs
-       in let ?autoClauses = foldl' (HashMap.unionWith HashSet.union) ?autoClauses autoClauses
+       in let ?autoClauses = foldl' (<>) ?autoClauses autoClauses
            in let res = concatMap step fs'
                   fs'' = HashSet.fromList (res ++ fs')
                in if fs'' == HashSet.fromList fs

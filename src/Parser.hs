@@ -57,15 +57,21 @@ pClause = do
         reservedOp lexer "."
         pure xs
       )
+      <|> (pure [])
   let ?scope = ?scope `HashSet.union` HashSet.fromList xs
   body <-
-    ( do
-        body <- pFormula
-        reservedOp lexer "=>"
-        pure body
+    try
+      ( do
+          body <- pFormula
+          reservedOp lexer "=>"
+          pure body
       )
+      <|> pure (Conj [])
   head <- pFormula
-  pure (Clause xs body head)
+  let clause = Clause xs body head
+  unless (all (`elem` freeVars head) xs) $
+    error ("Variable not appearing in the head of a clause must be marked as existential: " ++ show clause)
+  pure clause
 
 pFormula :: (?scope :: Scope) => Parser Formula
 pFormula =
@@ -73,7 +79,6 @@ pFormula =
   where
     inner =
       parens lexer pFormula
-        <|> pClause
         <|> pExists
         <|> pTrue
         <|> pFalse
