@@ -41,9 +41,9 @@ test =
   saturate $
     pProgram
       "forall (z : i -> i). P (F z) <= P (z G); \
-      \ forall (g : i). P (H g) <= Q g;\
+      \ forall (g1 : i) (g2 : i). P (H g1 g2) <= Q g1 /\\ Q g2;\
       \ forall . Q G <= ; \
-      \ forall . false <= P (F H) "
+      \ forall . false <= P (F (H G)) "
 
 -- * Clause Set
 
