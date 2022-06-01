@@ -4,10 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Resolve
-  ( -- * Testing
-    test,
-
-    -- * Clause Sets
+  ( -- * Clause Sets
     ClauseSet,
     lookupClauses,
     toClauseSet,
@@ -31,19 +28,7 @@ import qualified Data.List as List
 import Data.Maybe
 import Data.Traversable
 import Debug.Trace
-import Parser
 import Syntax
-
--- * Testing
-
-test :: ClauseSet
-test =
-  saturate $
-    pProgram
-      "forall (z : i -> i). P (F z) <= P (z G); \
-      \ forall (g1 : i) (g2 : i). P (H g1 g2) <= Q g1 /\\ Q g2;\
-      \ forall . Q G <= ; \
-      \ forall . false <= P (F (H G)) "
 
 -- * Clause Set
 

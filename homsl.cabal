@@ -5,9 +5,10 @@ license:            MIT
 license-file:       LICENSE
 category:           Verification
 
-library saturation
+library
   exposed-modules:  Syntax,
-                    Resolve
+                    Resolve,
+                    Parser
 
   other-modules:
 
@@ -38,32 +39,15 @@ library saturation
   
   default-language: Haskell2010
 
+executable profiling
+  main-is:          Main.hs
 
--- library verified-effects
---   exposed-modules:  Tracer
+  hs-source-dirs:   test
 
---   hs-source-dirs:   src
+  build-depends:    base,
+                    homsl
 
---   build-depends:    base,
---                     mtl,
---                     free,
---                     selective,
---                     unordered-containers,
---                     hashable
+  ghc-options:      -prof
+                    -fprof-auto
 
---   ghc-options:      -Wall
---                     -Wcompat
---                     -Widentities
---                     -Wincomplete-uni-patterns
---                     -Wincomplete-record-updates
---                     -Wredundant-constraints
---                     -Wmissing-export-lists
---                     -Wpartial-fields
---                     -Wmissing-deriving-strategies
---                     -Wunused-packages
-
---                     -Wno-unused-matches
---                     -Wno-name-shadowing
---                     -Wno-unused-local-binds
-  
---   default-language: Haskell2010
+  default-language: Haskell2010

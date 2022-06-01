@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Parser (pProgram) where
+module Parser (parseProgram) where
 
 import Control.Monad.Reader
 import Data.Char
@@ -12,8 +12,8 @@ import Text.Parsec
 import Text.Parsec.Token
 
 -- | Parse a collection of symbol declarations and clauses.
-pProgram :: String -> [Formula]
-pProgram str =
+parseProgram :: String -> [Formula]
+parseProgram str =
   case runReader
     ( runParserT
         (sepEndBy pClause (reservedOp lexer ";") <* eof)
