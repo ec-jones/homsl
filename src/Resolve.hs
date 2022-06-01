@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -115,8 +116,8 @@ isAutoBody (Exists _ _) = False
 -- | Check if a formula is a valid head for a /nested/ automaton clause.
 isStrictAutoHead :: Term -> Bool
 isStrictAutoHead (App (Sym p) (Apps (Var f) xs)) =
-  all (\case Var _ -> True; nonVar -> False) xs &&
-    not (null xs)
+  all (\case Var _ -> True; nonVar -> False) xs
+    && not (null xs)
 isStrictAutoHead _ = False
 
 -- | Saturate a given set of formulas.
@@ -139,11 +140,10 @@ saturate todo = runReader (go HashSet.empty [] todo) initEnv
       ( \env -> env {resolveScope = mkScope xs <> resolveScope env}
       )
       $ do
+        traceM ("\nClause: " ++ show (Clause xs body head))
         (body', subst) <- resolve body
         traceM
-          ( "\nClause: "
-              ++ show (Clause xs body head)
-              ++ "\nStep: "
+          ( "Step: "
               ++ show body
               ++ " ▷* "
               ++ show body'
@@ -197,31 +197,38 @@ resolve (Atom tm@(App (Sym p) arg)) = do
         )
 
       -- Select a clause with an appropriate head
-      Clause ys body (Atom head) <- foldr ((<|>) . pure) empty (lookupClauses p (autoClauses env))
-      guard (length ys >= length ss)
+      choose (lookupClauses p (autoClauses env)) >>= \case
+        Clause ys body (Atom head) -> do
+          guard (length ys >= length ss)
 
-      -- Delete irrelevant atoms from the body
-      let (ys', xs) = List.splitAt (length ys - length ss) ys
-          body' = restrictBody xs body
-          head' = App (Sym p) (Apps (Var y) (fmap Var xs))
-      guard (sortArgs (idSort y) == fmap idSort xs)
+          -- Delete irrelevant atoms from the body
+          let (ys', xs) = List.splitAt (length ys - length ss) ys
+              body' = restrictBody xs body
+              head' = App (Sym p) (Apps (Var y) (fmap Var xs))
+          guard (sortArgs (idSort y) == fmap idSort xs)
 
-      pure
-        ( Conj
-            [ subst (mkSubst (zip xs ss)) body',
-              Clause xs body' (Atom head')
-            ],
-          mempty
-        )
+          pure
+            ( Conj
+                [ subst (mkSubst (zip xs ss)) body',
+                  Clause xs body' (Atom head')
+                ],
+              mempty
+            )
+        nonClause -> empty
     )
     <|> do
       -- (ExInst) and (Step/Refl)
       -- Select a clause with an appropriate head
-      Clause ys body (Atom head) <- foldr ((<|>) . pure) empty (lookupClauses p (autoClauses env))
-
-      -- Match heads
-      (thetaL, thetaR) <- (matchHead tm head)
-      pure (subst thetaR body, thetaL)
+      choose (lookupClauses p (autoClauses env)) >>= \case
+        Clause ys body (Atom head) -> do
+          -- Match heads
+          (thetaL, thetaR) <- (matchHead ys tm head)
+          pure (subst thetaR body, thetaL)
+        Atom head -> do
+          -- Match heads
+          (thetaL, thetaR) <- (matchHead [] tm head)
+          pure (Conj [], thetaL)
+        nonClause -> empty
 resolve (Atom a) = error ("Atom is not well-typed!")
 resolve (Conj fs) = do
   -- Select one conjunct to resolve.
@@ -232,7 +239,7 @@ resolve (Clause xs body head)
   | otherwise =
       case toClauseSet body of
         Nothing -> error "Non-automaton nested implication!"
-        Just body' ->
+        Just body' -> do
           -- Add local automaton clauses.
           local
             ( \env ->
@@ -299,13 +306,15 @@ restrictBody xs = Conj . go []
     go acc _ =
       error "Non-automaton clause!"
 
--- | @matchHead xs lhs rhs@ finds instances @theta@ of @xs@ and @theta'@ such that
+-- | @matchHead ys lhs rhs@ finds instances @theta@ of @ys@ and @theta'@ such that
 -- @subst theta lhs = subst theta' rhs@ and @subst theta' rhs@ is closed.
 -- The rhs is assumed to be /shallow/ and /linear/.
-matchHead :: Term -> Term -> LogicT (Reader ResolveEnv) (Subst, Subst)
-matchHead lhs rhs = execStateT (go lhs rhs) mempty
+matchHead :: [Id] -> Term -> Term -> LogicT (Reader ResolveEnv) (Subst, Subst)
+matchHead ys lhs rhs = execStateT (go lhs rhs) mempty
   where
     go :: Term -> Term -> StateT (Subst, Subst) (LogicT (Reader ResolveEnv)) ()
+    go (Var x) (Var y)
+      | x == y = pure ()
     go (Sym f) (Sym g)
       | f == g = pure ()
       | otherwise = empty
@@ -313,9 +322,10 @@ matchHead lhs rhs = execStateT (go lhs rhs) mempty
       -- Decomposition
       go fun fun'
       go arg arg'
-    go t (Var y) =
-      -- Because the rhs is linear this is the first time y has been bound.
-      modify ((mempty, mkSubst [(y, t)]) <>)
+    go t (Var y)
+      | y `elem` ys =
+          -- Because the rhs is linear this is the first time y has been bound.
+          modify ((mempty, mkSubst [(y, t)]) <>)
     -- RHS can only be MSL
     go (Var x) t'@(Apps (Sym fun) args) = do
       env <- ask
@@ -335,3 +345,7 @@ matchHead lhs rhs = execStateT (go lhs rhs) mempty
         Just t ->
           go t t'
     go _ _ = empty
+
+-- | Non-deterministic selection.
+choose :: (Alternative m, Foldable f) => f a -> m a
+choose = foldl' (\k f -> k <|> pure f) empty
