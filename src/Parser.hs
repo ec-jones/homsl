@@ -1,130 +1,106 @@
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE LambdaCase #-}
 
-module Parser (parseClauses, parseFormula) where
+module Parser (pProgram) where
 
-import Binder
-import Control.Monad
+import Control.Monad.Reader
 import Data.Char
-import Data.HashSet qualified as HashSet
+import Data.Foldable
+import Data.Hashable
+import qualified Data.List as List
 import Syntax
 import Text.Parsec
-import Text.Parsec.Language
-import Text.Parsec.String
 import Text.Parsec.Token
 
-parseClauses :: String -> [Formula]
-parseClauses str =
-  let ?scope = HashSet.empty
-   in case parse
-        ( whiteSpace lexer
-            *> sepEndBy pClause (reservedOp lexer ";")
-            <* eof
-        )
+-- | Parse a collection of symbol declarations and clauses.
+pProgram :: String -> [Formula]
+pProgram str =
+  case runReader
+    ( runParserT
+        (sepEndBy pClause (reservedOp lexer ";") <* eof)
+        ()
         ""
-        str of
-        Left err -> error (show err)
-        Right fm -> fm
-
-parseFormula :: String -> Formula
-parseFormula str =
-  let ?scope = HashSet.empty
-   in case parse
-        ( whiteSpace lexer
-            *> pFormula
-            <* eof
-        )
-        ""
-        str of
-        Left err -> error (show err)
-        Right fm -> fm
+        str
+    )
+    mempty of
+    Left err -> error (show err)
+    Right fs -> fs
 
 -- | Lexer for Haskell style tokens.
-lexer :: TokenParser s
+lexer :: GenTokenParser String () (Reader Scope)
 lexer =
-  makeTokenParser
-    haskellStyle
-      { reservedNames = ["forall", "true", "exists"],
-        reservedOpNames = ["=>", "/\\", ".", ";"]
+  makeTokenParser $
+    LanguageDef
+      { commentStart = "{-",
+        commentEnd = "-}",
+        commentLine = "--",
+        nestedComments = True,
+        identStart = letter,
+        identLetter = alphaNum <|> oneOf "_'",
+        opStart = oneOf "<=/.;:-",
+        opLetter = oneOf "<=/\\.;:->",
+        reservedOpNames = ["<=", "/\\", ".", ":", ";", "->"],
+        reservedNames = ["false", "forall", "i", "o"],
+        caseSensitive = True
       }
 
-pClause :: (?scope :: Scope) => Parser Formula
+-- | Parse a clause.
+pClause :: ParsecT String () (Reader Scope) Formula
 pClause = do
-  xs <-
-    ( do
-        reserved lexer "forall"
-        xs <- many pBinder
-        reservedOp lexer "."
-        pure xs
-      )
-      <|> (pure [])
-  let ?scope = ?scope `HashSet.union` HashSet.fromList xs
-  body <-
-    try
-      ( do
-          body <- pFormula
-          reservedOp lexer "=>"
-          pure body
-      )
-      <|> pure (Conj [])
-  head <- pFormula
-  let clause = Clause xs body head
-  unless (all (`elem` freeVars head) xs) $
-    error ("Variable not appearing in the head of a clause must be marked as existential: " ++ show clause)
-  pure clause
-
-pFormula :: (?scope :: Scope) => Parser Formula
-pFormula =
-  Conj <$> sepBy1 inner (reservedOp lexer "/\\")
-  where
-    inner =
-      parens lexer pFormula
-        <|> pExists
-        <|> pTrue
-        <|> pFalse
-        <|> pAtom
-          <?> "formula"
-
-pExists :: (?scope :: Scope) => Parser Formula
-pExists = do
-  reserved lexer "exists"
-  x <- pBinder
-  let ?scope = ?scope `HashSet.union` HashSet.singleton x
+  -- Collect binders
+  reserved lexer "forall"
+  xs <- many (pSymbolDec True)
   reservedOp lexer "."
-  body <- pFormula
-  pure (Exists x body)
 
-pTrue :: Parser Formula
-pTrue = do
-  reserved lexer "true"
-  pure (Conj [])
+  -- Extend scope for parsing body and head
+  local (mkScope xs <>) $ do
+    -- Head is either atom or false.
+    head <- (Ff <$ reserved lexer "false") <|> pAtom
+    reservedOp lexer "<="
 
-pFalse :: Parser Formula
-pFalse = do
-  reserved lexer "false"
-  pure Ff
+    -- Body is a conjunction of atoms.
+    body <- sepBy pAtom (reservedOp lexer "/\\")
 
-pAtom :: (?scope :: Scope) => Parser Formula
+    -- Partition variables into truly universal and existential.
+    let (us, es) = List.partition (`inScope` freeVars head) xs
+        body' = foldl' (flip Exists) (Conj body) es
+
+    pure (Clause us body' head)
+
+-- | Parse an atomic formula.
+pAtom :: ParsecT String () (Reader Scope) Formula
 pAtom = Atom <$> pTerm
-  where
-    pTerm :: Parser Term
-    pTerm =
-      chainl1
-        ( parens lexer pTerm
-            <|> do
-              x <- identifier lexer
-              if isLower (head x)
-                then do
-                  unless (HashSet.member x ?scope) $
-                    error ("Variable is not in scope: " ++ show x)
-                  pure (Var x)
-                else pure (Sym x)
-        )
-        (pure App)
-        <?> "term"
 
-pBinder :: Parser String
-pBinder = do
+-- | Parse an applicative term.
+-- pTerm :: Parsec String u Term
+pTerm :: ParsecT String () (Reader Scope) Term
+pTerm = chainl1 inner (pure App) <?> "term"
+  where
+    inner :: ParsecT String () (Reader Scope) Term
+    inner =
+      parens lexer pTerm
+        <|> do
+          f <- identifier lexer
+          if isLower (head f)
+            then do
+              asks (lookupFromUnique (hash f)) >>= \case
+                Nothing -> error ("Variable not in scope: " ++ show f)
+                Just x -> pure (Var x)
+            else pure (Sym f)
+
+-- | Parse a declaration of a function symbol.
+pSymbolDec :: Bool -> ParsecT String () (Reader Scope) Id
+pSymbolDec p = (if p then (parens lexer) else id) $ do
   x <- identifier lexer
-  guard (isLower $ head x)
-  pure x
+  reservedOp lexer ":"
+  s <- pSort
+  pure (Id x s (hash x))
+
+-- | Parse a simple type over proposition and trees.
+pSort :: ParsecT String () (Reader Scope) Sort
+pSort = chainr1 inner ((:->) <$ reservedOp lexer "->") <?> "sort"
+  where
+    inner :: ParsecT String () (Reader Scope) Sort
+    inner =
+      parens lexer pSort
+        <|> I <$ reserved lexer "i"
+        <|> O <$ reserved lexer "o"

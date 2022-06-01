@@ -6,10 +6,8 @@ license-file:       LICENSE
 category:           Verification
 
 library saturation
-  exposed-modules:  Binder,
-                    Syntax,
-                    Parser,
-                    Resolve,
+  exposed-modules:  Syntax,
+                    Resolve
 
   other-modules:
 
@@ -17,8 +15,10 @@ library saturation
 
   build-depends:    base,
                     mtl,
+                    logict,
                     hashable,
                     parsec,
+                    containers,
                     unordered-containers
 
   ghc-options:      -Wall
