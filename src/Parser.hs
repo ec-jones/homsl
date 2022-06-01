@@ -47,24 +47,36 @@ lexer =
 pClause :: ParsecT String () (Reader Scope) Formula
 pClause = do
   -- Collect binders
-  reserved lexer "forall"
-  xs <- many (pSymbolDec True)
-  reservedOp lexer "."
+  xs <-
+    ( do
+        reserved lexer "forall"
+        xs <- many (pSymbolDec True)
+        reservedOp lexer "."
+        pure xs
+      )
+      <|> pure []
 
   -- Extend scope for parsing body and head
   local (mkScope xs <>) $ do
     -- Head is either atom or false.
     head <- (Ff <$ reserved lexer "false") <|> pAtom
-    reservedOp lexer "<="
+    ( do
+        reservedOp lexer "<="
 
-    -- Body is a conjunction of atoms.
-    body <- sepBy pAtom (reservedOp lexer "/\\")
+        -- Body is a conjunction of atoms.
+        body <- sepBy1 pAtom (reservedOp lexer "/\\")
 
-    -- Partition variables into truly universal and existential.
-    let (us, es) = List.partition (`inScope` freeVars head) xs
-        body' = foldl' (flip Exists) (Conj body) es
+        -- Partition variables into truly universal and existential.
+        let (us, es) = List.partition (`inScope` freeVars head) xs
+            body' = foldl' (flip Exists) (Conj body) es
 
-    pure (Clause us body' head)
+        pure (Clause us body' head)
+      )
+      <|> ( do
+              -- Facts
+              let us = List.filter (`inScope` freeVars head) xs
+              pure (Clause us (Conj []) head)
+          )
 
 -- | Parse an atomic formula.
 pAtom :: ParsecT String () (Reader Scope) Formula
