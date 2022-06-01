@@ -56,9 +56,9 @@ import Data.Traversable
 -- | Identifier
 data Id = Id
   { -- | The original name.
-    idName :: {-# UNPACK #-} !String,
+    idName :: String,
     -- | The identifier's sort.
-    idSort :: {-# UNPACK #-} !Sort,
+    idSort :: Sort,
     -- | A unique used to avoid capture.
     idUnique :: {-# UNPACK #-} !Int
   }
