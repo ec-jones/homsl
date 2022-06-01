@@ -314,7 +314,7 @@ matchHead ys lhs rhs = execStateT (go lhs rhs) mempty
   where
     go :: Term -> Term -> StateT (Subst, Subst) (LogicT (Reader ResolveEnv)) ()
     go (Var x) (Var y)
-      | x == y = pure ()
+      | x == y, y `notElem` ys = pure ()
     go (Sym f) (Sym g)
       | f == g = pure ()
       | otherwise = empty
