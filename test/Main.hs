@@ -1,9 +1,11 @@
 module Main where
 
-import Resolve
+import Control.Monad
 import Parser
+import Resolve
 
 main :: IO ()
 main = do
   input <- parseProgram <$> readFile "input/partial"
-  print (saturate input)
+  forM_ (saturate input) $ \cls -> do
+    print cls

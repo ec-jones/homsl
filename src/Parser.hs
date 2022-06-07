@@ -101,7 +101,7 @@ pTerm = chainl1 inner (pure App) <?> "term"
 
 -- | Parse a declaration of a function symbol.
 pSymbolDec :: Bool -> ParsecT String () (Reader Scope) Id
-pSymbolDec p = (if p then (parens lexer) else id) $ do
+pSymbolDec p = (if p then parens lexer else id) $ do
   x <- identifier lexer
   reservedOp lexer ":"
   s <- pSort

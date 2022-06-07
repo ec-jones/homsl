@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -69,7 +68,7 @@ instance Eq Id where
 
 instance Show Id where
   showsPrec _ x =
-    showString (idName x) . showString "_" . showsPrec 0 (idUnique x)
+    showString (idName x) . showString "_" . shows (idUnique x)
 
 -- | Create a unique for an identifiers that is guaranteed to be disjoint from the given scope.
 -- The resulting scope contains the identifier with the new unique.
@@ -139,7 +138,16 @@ data Term
     Sym String
   | -- | Application.
     App Term Term
-  deriving stock (Eq, Show)
+  deriving stock (Eq)
+
+instance Show Term where
+  showsPrec _ (Var x) = shows x
+  showsPrec _ (Sym s) = showString s
+  showsPrec p (Apps fun args) =
+    showParen (p > 10) $
+      showsPrec 11 fun . foldl' (\k arg -> k . showString " " . showsPrec 11 arg) id args
+
+{-# COMPLETE Apps #-}
 
 -- | Terms in spinal form.
 pattern Apps :: Term -> [Term] -> Term
@@ -175,10 +183,6 @@ data FormulaShape
   | Conj_ (HashSet.HashSet Formula)
   | Clause_ [Id] Formula Formula
   | Exists_ Id Formula
-  deriving stock Show
-
-instance Show Formula where
-  show = show . formulaShape
 
 -- | Equality and hashing check for alpha equivalence.
 instance Eq Formula where
@@ -218,6 +222,62 @@ instance Eq Formula where
 instance Hashable Formula where
   hashWithSalt s f =
     hashWithSalt s (formulaHash f IntMap.empty)
+
+instance Show Formula where
+  showsPrec _ Ff = showString "false"
+  showsPrec p (Atom t) = showsPrec p t
+  showsPrec p (Conj fs) = showParen (p > 3) (showConj fs)
+    where
+      showConj :: [Formula] -> ShowS
+      showConj [] = id
+      showConj [f] = showsPrec 3 f
+      showConj (f : fs) =
+        showsPrec 3 f . showString " /\\ " . showConj fs
+  showsPrec p (Clause xs body head) =
+    showParen (p > 1) (showForall xs . showBody body . showsPrec 2 head)
+    where
+      showForall :: [Id] -> ShowS
+      showForall [] = id
+      showForall xs =
+        showString "forall "
+          . foldl' (\k x -> k . shows x . showString " ") id xs
+          . showString "\b. "
+
+      showBody :: Formula -> ShowS
+      showBody (Conj []) = id
+      showBody f = showsPrec 2 f . showString " => "
+  showsPrec p (Exists x body) =
+    showParen (p > 1) (showString "exists " . shows x . showString ". " . showsPrec 2 body)
+
+-- -- | Print a first-order formula
+-- pprFm :: Formula -> SDoc
+-- pprFm (Atom a) =
+--   where
+--     parenthesize False d = d
+--     parenthesize True  d = parens d
+--     pretty n (Atom l r) = ppr l <+> text "=" <+> ppr r
+--     pretty n (Not p) =
+--       parenthesize (n >= notPrec) $
+--         char '¬' <+> pretty notPrec p
+--     pretty n (And p q) =
+--       parenthesize (n >= andPrec) $
+--         pretty (andPrec-1) p <+> text "/\\" <+> pretty (andPrec-1) q
+--     pretty n (Or p q) =
+--       parenthesize (n >= orPrec) $
+--         pretty (orPrec-1) p <+> text "\\/" <+> pretty (orPrec-1) q
+--     pretty n (Imp p q) =
+--       parenthesize (n >= impPrec) $
+--         pretty impPrec p <+> text "=>" <+> pretty (impPrec-1) q
+--     pretty n (All x p) =
+--       parenthesize (n >= allPrec) $
+--         pKWAll <+> ppr x <> text "." <+> pretty (allPrec-1) p
+--     pretty n (Exs x p) =
+--       parenthesize (n >= exPrec) $
+--         pKWExist <+> ppr x <> text "." <+> pretty (exPrec-1) p
+
+-- -- | Print a list of first-order formulae
+-- pFms :: [Fm] -> SDoc
+-- pFms fs = vcat (map pprFm fs)
 
 -- ** Smart constructors
 
@@ -328,7 +388,7 @@ data Subst = Subst
     -- | Free variables in the introduced term.
     substFreeVars :: Scope
   }
-  deriving stock Show
+  deriving stock (Show)
 
 instance Semigroup Subst where
   theta <> theta' =

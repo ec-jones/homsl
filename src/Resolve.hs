@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,38 +24,39 @@ import Data.Bifunctor
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.Hashable
 import qualified Data.List as List
 import Data.Maybe
 import Data.Traversable
-import Debug.Trace
+import Debug.Trace ()
 import Syntax
 
 -- * Clause Set
 
 -- | A collection of automaton clauses groupped by head symbol.
-newtype ClauseSet
+newtype ClauseSet f
   = ClauseSet
-      ( HashMap.HashMap String (HashSet.HashSet Formula)
+      ( HashMap.HashMap String (HashSet.HashSet f)
       )
-  deriving stock (Show)
+  deriving stock (Foldable)
 
-instance Semigroup ClauseSet where
+instance Hashable f => Semigroup (ClauseSet f) where
   ClauseSet xs <> ClauseSet ys =
     ClauseSet (HashMap.unionWith HashSet.union xs ys)
 
-instance Monoid ClauseSet where
+instance Hashable f => Monoid (ClauseSet f) where
   mempty = ClauseSet mempty
 
 -- | Find all clauses in a given with head symbol.
-lookupClauses :: String -> ClauseSet -> HashSet.HashSet Formula
+lookupClauses :: String -> ClauseSet f -> HashSet.HashSet f
 lookupClauses x (ClauseSet clss) =
   HashMap.lookupDefault HashSet.empty x clss
 
 -- | Create a clause set from a formula.
-toClauseSet :: Formula -> Maybe ClauseSet
+toClauseSet :: Formula -> Maybe (ClauseSet Formula)
 toClauseSet = go (ClauseSet HashMap.empty)
   where
-    go :: ClauseSet -> Formula -> Maybe ClauseSet
+    go :: ClauseSet Formula -> Formula -> Maybe (ClauseSet Formula)
     go (ClauseSet acc) head
       | Just p <- isAutoHead head =
           let hs = HashSet.singleton head
@@ -71,7 +72,7 @@ toClauseSet = go (ClauseSet HashMap.empty)
     go acc _ = Nothing
 
 -- | Convert a clause set into a formula.
-fromClauseSet :: ClauseSet -> Formula
+fromClauseSet :: ClauseSet Formula -> Formula
 fromClauseSet (ClauseSet clss) = Conj $ foldMap HashSet.toList clss
 
 -- | Check if a term is a valid head returning the predicate.
@@ -106,10 +107,10 @@ isStrictAutoHead (App (Sym p) (Apps (Var f) xs)) =
 isStrictAutoHead _ = False
 
 -- | Saturate a given set of formulas.
-saturate :: [Formula] -> ClauseSet
+saturate :: [Formula] -> ClauseSet Formula
 saturate todo = runReader (go HashSet.empty [] todo) initEnv
   where
-    go :: HashSet.HashSet Formula -> [Formula] -> [Formula] -> Reader ResolveEnv ClauseSet
+    go :: HashSet.HashSet Formula -> [Formula] -> [Formula] -> Reader ResolveEnv (ClauseSet Formula)
     go seen paused todo = do
       case partitionMaybe toClauseSet todo of
         ([], gs) -> asks (\env -> foldl' (<>) (autoClauses env) gs)
@@ -118,21 +119,21 @@ saturate todo = runReader (go HashSet.empty [] todo) initEnv
             hs <- observeAllT (step f)
             if all (`HashSet.member` seen) hs
               then go seen (f : paused) fs
-              else go (HashSet.fromList hs <> seen) [f] (paused ++ fs ++ hs)
+              else go (HashSet.fromList hs <> seen) [f] (paused ++ hs ++ fs)
 
     step :: Formula -> LogicT (Reader ResolveEnv) Formula
     step (Clause xs body head) = local
       ( \env -> env {resolveScope = mkScope xs <> resolveScope env}
       )
       $ do
-        traceM ("\nClause: " ++ show (Clause xs body head))
+        -- traceM ("\nClause: " ++ show (Clause xs body head))
         (body', subst) <- resolve body
-        traceM
-          ( "Step: "
-              ++ show body
-              ++ " ▷* "
-              ++ show body'
-          )
+        -- traceM
+        --   ( "Step: "
+        --       ++ show body
+        --       ++ " ▷* "
+        --       ++ show body'
+        --   )
         -- assert (isNull subst)
         pure (Clause xs body' head)
     step _ = error "Non clause in input!"
@@ -151,7 +152,7 @@ partitionMaybe f = go
 -- | The resolution environment.
 data ResolveEnv = ResolveEnv
   { -- | Existing automaton clauses.
-    autoClauses :: ClauseSet,
+    autoClauses :: ClauseSet Formula,
     -- | Existential variables.
     existentials :: Scope,
     -- | All local variables
@@ -176,7 +177,7 @@ resolve (Atom tm@(App (Sym p) arg)) = do
       -- (Assm)
       Apps (Var y) ss <- pure arg
       guard
-        ( length ss > 0
+        ( not (null ss)
             -- When existential we can use (ExInst)
             && not (y `inScope` existentials env)
         )
@@ -207,14 +208,14 @@ resolve (Atom tm@(App (Sym p) arg)) = do
       choose (lookupClauses p (autoClauses env)) >>= \case
         Clause ys body (Atom head) -> do
           -- Match heads
-          (thetaL, thetaR) <- (matchHead ys tm head)
+          (thetaL, thetaR) <- matchHead ys tm head
           pure (subst thetaR body, thetaL)
         Atom head -> do
           -- Match heads
-          (thetaL, thetaR) <- (matchHead [] tm head)
+          (thetaL, thetaR) <- matchHead [] tm head
           pure (Conj [], thetaL)
         nonClause -> empty
-resolve (Atom a) = error ("Atom is not well-typed!")
+resolve (Atom a) = error ("Atom is not well-typed: " ++ show a)
 resolve (Conj fs) = do
   -- Select one conjunct to resolve.
   (fs', theta) <- resolveConj fs
