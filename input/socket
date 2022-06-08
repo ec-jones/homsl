@@ -95,7 +95,7 @@ forall (soc : i) (k : i -> i).
 forall (soc : i) (k : i -> i). 
     IsU soc /\ Listening (k U) => Listening (Accept soc k);
 forall (soc : i) (k : i -> i). 
-    IsS soc /\ Open (k U) => Listening (Accept soc k);
+    IsS soc /\ Listening (k U) => Listening (Accept soc k);
 forall (soc : i) (k : i -> i). 
     IsU soc /\ Open (k U) => Open (Accept soc k);
 forall (soc : i) (k : i -> i). 
@@ -198,11 +198,6 @@ forall (k1 : i) (k2 : i).
     Open k1 => Open (Branch k1 k2);
 forall (k1 : i) (k2 : i). 
     Open k2 => Open (Branch k1 k2);
-
-Ready Pure;
-Bound Pure;
-Listening Pure;
-Open Pure;
 
 IsS S;
 IsU U;
