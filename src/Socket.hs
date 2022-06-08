@@ -21,16 +21,19 @@ module Socket
     fix,
 
     -- * Analysis
-    runAnalysis,
+    getClauses,
 
     -- * Testing
-    server
+    server,
   )
 where
 
 import qualified Control.Monad.RWS as RWS
 import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
+import HoMSL.Syntax
+import HoMSL.Parser
+import HoMSL.Resolve
 
 -- * Socket Interface
 
@@ -136,37 +139,7 @@ fix x f =
 
 -- * Analysis
 
-newtype SocketId
-  = SocketId Int
-  deriving newtype (Num, Enum, Show)
-
--- | Analysis monad.
-type AnalysisM =
-  RWS.RWS
-    SocketId -- 0 .. n - 1 socket's in scope
-    (IntMap.IntMap (SocketId, String)) -- Top-level definitions
-    Int -- Next top-level name.
-
--- | Fresh top-level name.
-fresh :: AnalysisM Int
-fresh = do
-  fun <- RWS.get
-  RWS.put (fun + 1)
-  pure fun
-
--- | Emit a top-level definition.
-emitFun :: Int -> String -> AnalysisM ()
-emitFun fun defn = do
-  nextSoc <- RWS.ask
-  RWS.tell (IntMap.singleton fun (nextSoc - 1, defn))
-
--- | Collect sockets in scope for lambda lifting.
-getLiftedArgs :: AnalysisM [SocketId]
-getLiftedArgs = do
-  nextSoc <- RWS.ask
-  pure [0 .. nextSoc - 1]
-
--- | Mechanism used for extracting socket id's from the arguments to recursive functions.
+-- | The type of arguments which can be analised
 class Socket a where
   withSocket :: (a -> AnalysisM b) -> AnalysisM b
 
@@ -178,6 +151,10 @@ instance Socket SocketId where
     RWS.local (+ 1) (m nextSoc)
 
   getSockets x = [x]
+
+instance Socket () where
+  withSocket m = m ()
+  getSockets () = []
 
 instance (Socket soc1, Socket soc2) => Socket (soc1, soc2) where
   withSocket m =
@@ -198,12 +175,45 @@ instance (Socket soc1, Socket soc2, Socket soc3) => Socket (soc1, soc2, soc3) wh
   getSockets (x, y, z) =
     getSockets x ++ getSockets y ++ getSockets z
 
--- | Analyse a socket program.
-runAnalysis :: (forall soc. Socket soc => SocketM soc ()) -> (String, IntMap.IntMap (SocketId, String))
-runAnalysis m = RWS.evalRWS (go m) 0 0
+-- | Analysis monad.
+type AnalysisM =
+  RWS.RWS
+    SocketId -- 0 .. n - 1 socket's in scope
+    (IntMap.IntMap (SocketId, Term)) -- Top-level definitions
+    Int -- Next top-level name.
+
+-- | A Socket identifier
+newtype SocketId
+  = SocketId Int
+  deriving newtype (Num, Enum, Show)
+
+-- | Fresh top-level name.
+fresh :: AnalysisM Int
+fresh = do
+  fun <- RWS.get
+  RWS.put (fun + 1)
+  pure fun
+
+-- | Emit a top-level definition.
+emitFun :: Int -> Term -> AnalysisM ()
+emitFun fun defn = do
+  nextSoc <- RWS.ask
+  RWS.tell (IntMap.singleton fun (nextSoc - 1, defn))
+
+-- | Collect sockets in scope for lambda lifting.
+getLiftedArgs :: AnalysisM [SocketId]
+getLiftedArgs = do
+  nextSoc <- RWS.ask
+  pure [0 .. nextSoc - 1]
+
+-- | Analyse a socket program for a given state.
+getClauses :: (forall soc. Socket soc => SocketM soc ()) -> (Formula, [Formula])
+getClauses m =
+  let (main, defns) = RWS.evalRWS (go m) 0 0
+   in (mkGoal main, [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns])
   where
-    go :: SocketM SocketId c -> AnalysisM String
-    go (Pure a) = pure "k"
+    go :: SocketM SocketId c -> AnalysisM Term
+    go (Pure a) = pure (Var cont)
     go (Socket k) = do
       liftedArgs <- getLiftedArgs
 
@@ -213,16 +223,16 @@ runAnalysis m = RWS.evalRWS (go m) 0 0
         emitFun fun defn
 
       cont <- go (Call fun liftedArgs (Pure ()))
-      pure ("socket " ++ cont)
+      pure (App (Sym "Socket") cont)
     go (Connect soc _ k) = do
       cont <- go k
-      pure ("connect soc_" ++ show soc ++ " (" ++ cont ++ ")")
+      pure (Apps (Sym "Connect") [Var (mkSocketId soc), cont])
     go (Bind soc _ k) = do
       cont <- go k
-      pure ("bind soc_" ++ show soc ++ " (" ++ cont ++ ")")
+      pure (Apps (Sym "Bind") [Var (mkSocketId soc), cont])
     go (Listen soc k) = do
       cont <- go k
-      pure ("listen soc_" ++ show soc ++ " (" ++ cont ++ ")")
+      pure (Apps (Sym "Listen") [Var (mkSocketId soc), cont])
     go (Accept soc k) = do
       liftedArgs <- getLiftedArgs
 
@@ -232,20 +242,20 @@ runAnalysis m = RWS.evalRWS (go m) 0 0
         emitFun fun defn
 
       cont <- go (Call fun liftedArgs (Pure ()))
-      pure ("accept soc_" ++ show soc ++ " " ++ cont)
+      pure (Apps (Sym "Accept") [Var (mkSocketId soc), cont])
     go (Send soc _ k) = do
       cont <- go k
-      pure ("send soc_" ++ show soc ++ " (" ++ cont ++ ")")
+      pure (Apps (Sym "Send") [Var (mkSocketId soc), cont])
     go (Receive soc k) = do
       cont <- go (k dynamic)
-      pure ("receive soc_" ++ show soc ++ " (" ++ cont ++ ")")
+      pure (Apps (Sym "Receive") [Var (mkSocketId soc), cont])
     go (Close soc k) = do
       cont <- go k
-      pure ("close soc_" ++ show soc ++ " (" ++ cont ++ ")")
+      pure (Apps (Sym "Close") [Var (mkSocketId soc), cont])
     go (Branch branch1 branch2) = do
       cont1 <- go branch1
       cont2 <- go branch2
-      pure ("branch " ++ " (" ++ cont1 ++ ") (" ++ cont2 ++ ")")
+      pure (Apps (Sym "Branch") [cont1, cont2])
     go (Fix x f k) = do
       liftedArgs <- getLiftedArgs
 
@@ -257,7 +267,32 @@ runAnalysis m = RWS.evalRWS (go m) 0 0
       go (Call fun (liftedArgs ++ getSockets x) k)
     go (Call fun socs k) = do
       cont <- go k
-      pure ("func_" ++ show fun ++ " (" ++ cont ++ ")" ++ showArgs socs)
+      pure (Apps (mkFunId fun) (cont : fmap (Var . mkSocketId) socs))
+
+-- * Term/Formula fragments
+
+mkClause :: String -> (IntMap.Key, (SocketId, Term)) -> Formula
+mkClause q (fun, (arity, defn)) =
+  let args = cont : [mkSocketId i | i <- [0 .. arity]]
+   in Clause args (Atom (App (Sym q) defn)) (Atom (App (Sym q) ((Apps (mkFunId fun) (fmap Var args)))))
+
+mkGoal :: Term -> Formula
+mkGoal t = 
+  let done = Sym "Pure"
+   in 
+     Clause [] (Atom (App (Sym "Untracked") $ subst (mkSubst [(cont, done)]) t)) Ff
+
+mkSocketId :: SocketId -> Id
+mkSocketId (SocketId soc) =
+  Id {idName = "soc", idSort = I, idUnique = soc}
+
+mkFunId :: Int -> Term
+mkFunId fun =
+  Sym ("Fun_" ++ show fun)
+
+cont :: Id
+cont =
+  Id {idName = "k", idSort = I, idUnique = -1}
 
 dynamic :: a
 dynamic =
@@ -265,12 +300,18 @@ dynamic =
     "Static analysis cannot depend on runtime data! \
     \ Try using the selective inferface."
 
-showArgs :: [SocketId] -> String
-showArgs xs
-  | null xs = ""
-  | otherwise = " " ++ unwords (fmap show xs)
+states :: [String]
+states =
+  [ "Ready",
+    "Bound",
+    "Listening",
+    "Open",
+    "Closed",
+    "Untracked"
+  ]
 
 -- * Testing
+
 
 server :: Socket soc => SocketM soc ()
 server = do
@@ -278,15 +319,15 @@ server = do
   bind soc 0000
   listen soc
   (x, y) <- accept soc
-  fix (x, soc) $ \(x, soc) k -> do
+  fix () $ \() k -> do
     msg <- receive x
     send soc "pong"
-    k (x, soc)
+    k ()
 
--- socket (func_0 k)
--- func_0: \k soc_0 ->
---  bind soc_0 (listen soc_0 (accept soc_0 (func_1 k soc_0)))
--- func_1: \k soc_0 soc_1 ->
---  func_2 k soc_0 soc_1 soc_1 soc_0
--- func_2: \k soc_0 soc_1 soc_2 soc_3 ->
---  receive soc_2 (send soc_3 (func_2 k soc_0 soc_1 soc_2 soc_3))
+test :: IO ()
+test =  do
+  automaton <- parseProgram <$> readFile "input/socket"
+  let (goal, defns) = getClauses server
+      clauses = saturate (goal : defns ++ automaton)
+  RWS.forM_ clauses $ \clause ->
+    print clause

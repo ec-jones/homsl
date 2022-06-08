@@ -1,13 +1,13 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Parser (parseProgram) where
+module HoMSL.Parser (parseProgram) where
 
 import Control.Monad.Reader
 import Data.Char
 import Data.Foldable
 import Data.Hashable
 import qualified Data.List as List
-import Syntax
+import HoMSL.Syntax
 import Text.Parsec
 import Text.Parsec.Token
 
@@ -36,9 +36,9 @@ lexer =
         nestedComments = True,
         identStart = letter,
         identLetter = alphaNum <|> oneOf "_'",
-        opStart = oneOf "<=/.;:-",
-        opLetter = oneOf "<=/\\.;:->",
-        reservedOpNames = ["<=", "/\\", ".", ":", ";", "->"],
+        opStart = oneOf "=/.;:-",
+        opLetter = oneOf "=>/\\.;:->",
+        reservedOpNames = ["=>", "/\\", ".", ":", ";", "->"],
         reservedNames = ["false", "forall", "i", "o"],
         caseSensitive = True
       }
@@ -58,13 +58,14 @@ pClause = do
 
   -- Extend scope for parsing body and head
   local (mkScope xs <>) $ do
-    -- Head is either atom or false.
-    head <- (Ff <$ reserved lexer "false") <|> pAtom
-    ( do
-        reservedOp lexer "<="
-
+    try ( do
         -- Body is a conjunction of atoms.
         body <- sepBy1 pAtom (reservedOp lexer "/\\")
+        
+        reservedOp lexer "=>"
+
+        -- Head is either atom or false.
+        head <- (Ff <$ reserved lexer "false") <|> pAtom
 
         -- Partition variables into truly universal and existential.
         let (us, es) = List.partition (`inScope` freeVars head) xs
@@ -73,7 +74,8 @@ pClause = do
         pure (Clause us body' head)
       )
       <|> ( do
-              -- Facts
+              -- Facts 
+              head <- pAtom
               let us = List.filter (`inScope` freeVars head) xs
               pure (Clause us (Conj []) head)
           )

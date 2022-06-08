@@ -3,7 +3,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Syntax
+module HoMSL.Syntax
   ( -- * Identifiers
     Id (..),
     uniqAway,
@@ -248,36 +248,6 @@ instance Show Formula where
       showBody f = showsPrec 2 f . showString " => "
   showsPrec p (Exists x body) =
     showParen (p > 1) (showString "exists " . shows x . showString ". " . showsPrec 2 body)
-
--- -- | Print a first-order formula
--- pprFm :: Formula -> SDoc
--- pprFm (Atom a) =
---   where
---     parenthesize False d = d
---     parenthesize True  d = parens d
---     pretty n (Atom l r) = ppr l <+> text "=" <+> ppr r
---     pretty n (Not p) =
---       parenthesize (n >= notPrec) $
---         char '¬' <+> pretty notPrec p
---     pretty n (And p q) =
---       parenthesize (n >= andPrec) $
---         pretty (andPrec-1) p <+> text "/\\" <+> pretty (andPrec-1) q
---     pretty n (Or p q) =
---       parenthesize (n >= orPrec) $
---         pretty (orPrec-1) p <+> text "\\/" <+> pretty (orPrec-1) q
---     pretty n (Imp p q) =
---       parenthesize (n >= impPrec) $
---         pretty impPrec p <+> text "=>" <+> pretty (impPrec-1) q
---     pretty n (All x p) =
---       parenthesize (n >= allPrec) $
---         pKWAll <+> ppr x <> text "." <+> pretty (allPrec-1) p
---     pretty n (Exs x p) =
---       parenthesize (n >= exPrec) $
---         pKWExist <+> ppr x <> text "." <+> pretty (exPrec-1) p
-
--- -- | Print a list of first-order formulae
--- pFms :: [Fm] -> SDoc
--- pFms fs = vcat (map pprFm fs)
 
 -- ** Smart constructors
 

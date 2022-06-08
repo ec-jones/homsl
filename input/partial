@@ -1,7 +1,7 @@
-forall (z : i -> i). P (F z) <= P (z G);
+forall (z : i -> i). P (z G) => P (F z);
 
-forall (g1 : i) (g2 : i). P (H g1 g2) <= Q g1 /\ Q g2;
+forall (g1 : i) (g2 : i). Q g1 /\ Q g2 => P (H g1 g2);
       
 Q G; 
 
-false <= P (F (H G))
+P (F (H G)) => false

@@ -1,0 +1,208 @@
+forall (k : i -> i). 
+    Ready (k S) => Untracked (Socket k);
+forall (k : i -> i).
+    Untracked (k U) => Untracked (Socket k);
+forall (k : i -> i).
+    Ready (k U) => Ready (Socket k) ;
+forall (k : i -> i).
+    Bound (k U) => Bound (Socket k);
+forall (k : i -> i).
+    Listening (k U) => Listening (Socket k);
+forall (k : i -> i).
+    Open (k U) => Open (Socket k);
+forall (k : i -> i).
+    Close (k U) => Close (Socket k);
+
+forall (soc : i) (k : i). 
+    Untracked k => Untracked (Bind soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Ready k => Ready (Bind soc k);
+forall (soc : i) (k : i). 
+    IsS soc /\ Bound k => Ready (Bind soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Bound k => Bound (Bind soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Bound (Bind soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Listening k => Listening (Bind soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Listening (Bind soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Open k => Open (Bind soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Open (Bind soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Close k => Close (Bind soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Close (Bind soc k);
+
+forall (soc : i) (k : i). 
+    Untracked k => Untracked (Connect soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Ready k => Ready (Connect soc k);
+forall (soc : i) (k : i). 
+    IsS soc /\ Open k => Ready (Connect soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Bound k => Bound (Connect soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Bound (Connect soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Listening k => Listening (Connect soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Listening (Connect soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Open k => Open (Connect soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Open (Connect soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Close k => Close (Connect soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Close (Connect soc k);
+
+forall (soc : i) (k : i). 
+    Untracked k => Untracked (Listen soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Ready k => Ready (Listen soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Ready (Listen soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Bound k => Bound (Listen soc k);
+forall (soc : i) (k : i). 
+    IsS soc /\ Listening k => Bound (Listen soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Listening k => Listening (Listen soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Listening (Listen soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Open k => Open (Listen soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Open (Listen soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Close k => Close (Listen soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Close (Listen soc k);
+
+forall (soc : i) (k : i -> i). 
+    Untracked (k U) => Untracked (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    Open (k S) => Untracked (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsU soc => Ready (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsU soc /\ Bound (k U) => Bound (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsS soc => Bound (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsU soc /\ Listening (k U) => Listening (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsS soc /\ Open (k U) => Listening (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsU soc /\ Open (k U) => Open (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsS soc => Open (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsU soc /\ Close (k U) => Close (Accept soc k);
+forall (soc : i) (k : i -> i). 
+    IsS soc => Close (Accept soc k);
+
+forall (soc : i) (k : i). 
+    Untracked k => Untracked (Send soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Ready k => Ready (Send soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Ready (Send soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Bound k => Bound (Send soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Bound (Send soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Listening k => Listening (Send soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Listening (Send soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Open k => Open (Send soc k);
+forall (soc : i) (k : i). 
+    IsS soc /\ Open k => Open (Send soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Close k => Close (Send soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Close (Send soc k);
+
+forall (soc : i) (k : i). 
+    Untracked k => Untracked (Receive soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Ready k => Ready (Receive soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Ready (Receive soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Bound k => Bound (Receive soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Bound (Receive soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Listening k => Listening (Receive soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Listening (Receive soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Open k => Open (Receive soc k);
+forall (soc : i) (k : i). 
+    IsS soc /\ Open k => Open (Receive soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Close k => Close (Receive soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Close (Receive soc k);
+
+forall (soc : i) (k : i). 
+    Untracked k => Untracked (Close soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Ready k => Ready (Close soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Ready (Close soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Bound k => Bound (Close soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Bound (Close soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Listening k => Listening (Close soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Listening (Close soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Open k => Open (Close soc k);
+forall (soc : i) (k : i). 
+    IsS soc /\ Close k => Open (Close soc k);
+forall (soc : i) (k : i). 
+    IsU soc /\ Close k => Close (Close soc k);
+forall (soc : i) (k : i). 
+    IsS soc => Close (Close soc k);
+
+forall (k1 : i) (k2 : i). 
+    Untracked k1 => Untracked (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Untracked k2 => Untracked (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Ready k1 => Ready (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Ready k2 => Ready (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Bound k1 => Bound (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Bound k2 => Bound (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Listening k1 => Listening (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Listening k2 => Listening (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Close k1 => Close (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Close k2 => Close (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Open k1 => Open (Branch k1 k2);
+forall (k1 : i) (k2 : i). 
+    Open k2 => Open (Branch k1 k2);
+
+Ready Pure;
+Bound Pure;
+Listening Pure;
+Open Pure;
+
+IsS S;
+IsU U;
