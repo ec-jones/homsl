@@ -209,10 +209,10 @@ getLiftedArgs = do
   pure [0 .. nextSoc - 1]
 
 -- | Analyse a socket program for a given state.
-getClauses :: (forall soc. Socket soc => SocketM soc ()) -> (Formula, [Formula])
+getClauses :: (forall soc. Socket soc => SocketM soc ()) -> [Formula]
 getClauses m =
   let (main, defns) = RWS.evalRWS (go m) 0 0
-   in (mkGoal main, [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns])
+   in (mkGoal main : [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns])
   where
     go :: SocketM SocketId c -> AnalysisM Term
     go (Pure a) = pure (Var cont)
@@ -327,16 +327,8 @@ server = do
 
 test :: IO ()
 test =  do
-  h <- openFile "mystdout" WriteMode
-  hDuplicateTo h stderr
-
   automaton <- parseProgram <$> readFile "input/socket"
-  let (goal, defns) = getClauses server
-      clauses = saturate (goal : defns ++ automaton)
+  let prog = getClauses server
+      clauses = saturate (prog ++ automaton)
   RWS.forM_ clauses $ \clause ->
     print clause
-
--- Untracked (Socket (Fun_0 Pure)) => false
--- forall soc. IsS soc => Ready (Fun_0 Pure soc) => false
-
--- IsS soc_0 /\ (forall soc_590636788820420320 . IsU soc_590636788820420320 => IsS soc_0) => Ready (Fun_0 k_-1 soc_0)
