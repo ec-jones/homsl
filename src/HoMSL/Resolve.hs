@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -127,15 +128,14 @@ saturate todo = runReader (go HashSet.empty [] todo) initEnv
       ( \env -> env {resolveScope = mkScope xs <> resolveScope env}
       )
       $ do
-        traceM ("\nClause: " ++ show (Clause xs body head))
-        (body', subst) <- resolve body
-        traceM
+        !() <- traceM ("\nClause: " ++ show (Clause xs body head))
+        (!body', !subst) <- resolve body
+        !() <- traceM
           ( "Step: "
               ++ show body
               ++ " ▷* "
               ++ show body'
           )
-        -- assert (isNull subst)
         pure (Clause xs body' head)
     step _ = error "Non clause in input!"
 
@@ -197,7 +197,7 @@ resolve (Atom tm@(App (Sym p) arg)) = do
               head' = App (Sym p) (Apps (Var y) (fmap Var xs'))
           guard (sortArgs (idSort y) == fmap idSort xs)
 
-          traceM ("Selected: " ++ show (Clause ys body (Atom head)))
+          !() <- traceM ("Selected: " ++ show (Clause ys body (Atom head)))
           
           pure
             ( Conj
@@ -215,12 +215,12 @@ resolve (Atom tm@(App (Sym p) arg)) = do
         Clause ys body (Atom head) -> do
           -- Match heads
           (thetaL, thetaR) <- matchHead ys tm head
-          traceM ("Selected: " ++ show (Clause ys body (Atom head)))
+          !() <- traceM ("Selected: " ++ show (Clause ys body (Atom head)))
           pure (subst thetaR body, thetaL)
         Atom head -> do
           -- Match heads
           (thetaL, thetaR) <- matchHead [] tm head
-          traceM ("Selected: " ++ show (Atom head))
+          !() <- traceM ("Selected: " ++ show (Atom head))
           pure (Conj [], thetaL)
         nonClause -> empty
 resolve (Atom a) = error ("Atom is not well-typed: " ++ show a)
@@ -230,6 +230,9 @@ resolve (Conj fs) = do
   pure (Conj fs', theta)
 resolve (Clause xs body head)
   | Atom t <- head, isStrictAutoHead t = empty
+  | all (`notElem` xs) (listScope $ freeVars head) =
+    -- (Scope1)
+    pure (head, mempty)
   | otherwise =
       case toClauseSet body of
         Nothing -> error "Non-automaton nested implication!"

@@ -28,6 +28,8 @@ module Socket
   )
 where
 
+import System.IO
+import GHC.IO.Handle
 import qualified Control.Monad.RWS as RWS
 import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
@@ -226,13 +228,13 @@ getClauses m =
       pure (App (Sym "Socket") cont)
     go (Connect soc _ k) = do
       cont <- go k
-      pure (Apps (Sym "Connect") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Connect") [cont, Var (mkSocketId soc)])
     go (Bind soc _ k) = do
       cont <- go k
-      pure (Apps (Sym "Bind") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Bind") [cont, Var (mkSocketId soc)])
     go (Listen soc k) = do
       cont <- go k
-      pure (Apps (Sym "Listen") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Listen") [cont, Var (mkSocketId soc)])
     go (Accept soc k) = do
       liftedArgs <- getLiftedArgs
 
@@ -242,16 +244,16 @@ getClauses m =
         emitFun fun defn
 
       cont <- go (Call fun liftedArgs (Pure ()))
-      pure (Apps (Sym "Accept") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Accept") [cont, Var (mkSocketId soc)])
     go (Send soc _ k) = do
       cont <- go k
-      pure (Apps (Sym "Send") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Send") [cont, Var (mkSocketId soc)])
     go (Receive soc k) = do
       cont <- go (k dynamic)
-      pure (Apps (Sym "Receive") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Receive") [cont, Var (mkSocketId soc)])
     go (Close soc k) = do
       cont <- go k
-      pure (Apps (Sym "Close") [Var (mkSocketId soc), cont])
+      pure (Apps (Sym "Close") [cont, Var (mkSocketId soc)])
     go (Branch branch1 branch2) = do
       cont1 <- go branch1
       cont2 <- go branch2
@@ -312,7 +314,6 @@ states =
 
 -- * Testing
 
-
 server :: Socket soc => SocketM soc ()
 server = do
   soc <- socket
@@ -326,8 +327,16 @@ server = do
 
 test :: IO ()
 test =  do
+  h <- openFile "mystdout" WriteMode
+  hDuplicateTo h stderr
+
   automaton <- parseProgram <$> readFile "input/socket"
   let (goal, defns) = getClauses server
       clauses = saturate (goal : defns ++ automaton)
   RWS.forM_ clauses $ \clause ->
     print clause
+
+-- Untracked (Socket (Fun_0 Pure)) => false
+-- forall soc. IsS soc => Ready (Fun_0 Pure soc) => false
+
+-- IsS soc_0 /\ (forall soc_590636788820420320 . IsU soc_590636788820420320 => IsS soc_0) => Ready (Fun_0 k_-1 soc_0)
