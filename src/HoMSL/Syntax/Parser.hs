@@ -1,13 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
 
-module HoMSL.Parser (parseProgram) where
+module HoMSL.Syntax.Parser (parseProgram) where
 
 import Control.Monad.Reader
 import Data.Char
 import Data.Foldable
-import Data.Hashable
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.List as List
-import HoMSL.Syntax
+import qualified HoMSL.IdEnv as IdEnv
+import HoMSL.Syntax.Formula
+import HoMSL.Syntax.Term
 import Text.Parsec
 import Text.Parsec.Token
 
@@ -17,7 +19,7 @@ parseProgram str =
   case runReader
     ( runParserT
         (sepEndBy pClause (reservedOp lexer ";") <* eof)
-        ()
+        0
         ""
         str
     )
@@ -26,7 +28,7 @@ parseProgram str =
     Right fs -> fs
 
 -- | Lexer for Haskell style tokens.
-lexer :: GenTokenParser String () (Reader Scope)
+lexer :: GenTokenParser String u (Reader (HashMap.HashMap String Id))
 lexer =
   makeTokenParser $
     LanguageDef
@@ -44,7 +46,7 @@ lexer =
       }
 
 -- | Parse a clause.
-pClause :: ParsecT String () (Reader Scope) Formula
+pClause :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
 pClause = do
   -- Collect binders
   xs <-
@@ -57,63 +59,65 @@ pClause = do
       <|> pure []
 
   -- Extend scope for parsing body and head
-  local (mkScope xs <>) $ do
-    try ( do
-        -- Body is a conjunction of atoms.
-        body <- sepBy1 pAtom (reservedOp lexer "/\\")
-        
-        reservedOp lexer "=>"
+  local (HashMap.fromList [(idName x, x) | x <- xs] <>) $ do
+    try
+      ( do
+          -- Body is a conjunction of atoms.
+          body <- sepBy1 pAtom (reservedOp lexer "/\\")
 
-        -- Head is either atom or false.
-        head <- (Ff <$ reserved lexer "false") <|> pAtom
+          reservedOp lexer "=>"
 
-        -- Partition variables into truly universal and existential.
-        let (us, es) = List.partition (`inScope` freeVars head) xs
-            body' = foldl' (flip Exists) (Conj body) es
+          -- Head is either atom or false.
+          head <- (Ff <$ reserved lexer "false") <|> pAtom
 
-        pure (Clause us body' head)
+          -- Partition variables into truly universal and existential.
+          let (us, es) = List.partition (`IdEnv.member` IdEnv.freeVars head) xs
+              body' = foldl' (flip Exists) (Conj body) es
+
+          pure (Clause us body' head)
       )
       <|> ( do
-              -- Facts 
+              -- Facts
               head <- pAtom
-              let us = List.filter (`inScope` freeVars head) xs
+              let us = List.filter (`IdEnv.member` IdEnv.freeVars head) xs
               pure (Clause us (Conj []) head)
           )
 
 -- | Parse an atomic formula.
-pAtom :: ParsecT String () (Reader Scope) Formula
+pAtom :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
 pAtom = Atom <$> pTerm
 
 -- | Parse an applicative term.
--- pTerm :: Parsec String u Term
-pTerm :: ParsecT String () (Reader Scope) Term
+pTerm :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Term
 pTerm = chainl1 inner (pure App) <?> "term"
   where
-    inner :: ParsecT String () (Reader Scope) Term
+    inner :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Term
     inner =
       parens lexer pTerm
         <|> do
           f <- identifier lexer
           if isLower (head f)
             then do
-              asks (lookupFromUnique (hash f)) >>= \case
+              asks (HashMap.lookup f) >>= \case
                 Nothing -> error ("Variable not in scope: " ++ show f)
                 Just x -> pure (Var x)
             else pure (Sym f)
 
 -- | Parse a declaration of a function symbol.
-pSymbolDec :: Bool -> ParsecT String () (Reader Scope) Id
+pSymbolDec :: Bool -> ParsecT String Int (Reader (HashMap.HashMap String Id)) Id
 pSymbolDec p = (if p then parens lexer else id) $ do
   x <- identifier lexer
   reservedOp lexer ":"
   s <- pSort
-  pure (Id x s (hash x))
+  unique <- getState
+  putState (unique + 1)
+  pure (Id x s unique)
 
 -- | Parse a simple type over proposition and trees.
-pSort :: ParsecT String () (Reader Scope) Sort
+pSort :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Sort
 pSort = chainr1 inner ((:->) <$ reservedOp lexer "->") <?> "sort"
   where
-    inner :: ParsecT String () (Reader Scope) Sort
+    inner :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Sort
     inner =
       parens lexer pSort
         <|> I <$ reserved lexer "i"

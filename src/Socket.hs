@@ -34,8 +34,8 @@ import qualified Control.Monad.RWS as RWS
 import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
 import HoMSL.Syntax
-import HoMSL.Parser
-import HoMSL.Resolve
+import HoMSL.Syntax.Parser
+import HoMSL.Rewrite
 
 -- * Socket Interface
 
@@ -276,7 +276,7 @@ getClauses m =
 mkClause :: String -> (IntMap.Key, (SocketId, Term)) -> Formula
 mkClause q (fun, (arity, defn)) =
   let args = cont : [mkSocketId i | i <- [0 .. arity]]
-   in Clause args (Atom (App (Sym q) defn)) (Atom (App (Sym q) ((Apps (mkFunId fun) (fmap Var args)))))
+   in Clause args (Atom (App (Sym q) defn)) (Atom (App (Sym q) (Apps (mkFunId fun) (fmap Var args))))
 
 mkGoal :: Term -> Formula
 mkGoal t = 
@@ -329,6 +329,6 @@ test :: IO ()
 test =  do
   automaton <- parseProgram <$> readFile "input/socket"
   let prog = getClauses server
-      clauses = saturate (prog ++ automaton)
+      clauses = saturate (groupByHead (prog ++ automaton))
   RWS.forM_ clauses $ \clause ->
     print clause
