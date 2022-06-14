@@ -23,8 +23,7 @@ library
                     hashable,
                     parsec,
                     containers,
-                    unordered-containers,
-                    either
+                    unordered-containers
 
   ghc-options:      -Wall
                     -Wcompat
@@ -43,22 +42,45 @@ library
   
   default-language: Haskell2010
 
-library socket-example
+library homsl-socket
   exposed-modules:  Socket
 
-  other-modules:
-
-  hs-source-dirs:   src
+  hs-source-dirs:   sockets
 
   build-depends:    base,
                     mtl,
-                    selective,
                     containers,
-                    homsl,
+                    selective,
+                    homsl
+
+  ghc-options:      -Wall
+                    -Wcompat
+                    -Widentities
+                    -Wincomplete-uni-patterns
+                    -Wincomplete-record-updates
+                    -Wredundant-constraints
+                    -Wmissing-export-lists
+                    -Wpartial-fields
+                    -Wmissing-deriving-strategies
+                    -Wunused-packages
+
+                    -Wno-unused-matches
+                    -Wno-name-shadowing
+                    -Wno-unused-local-binds
+  
+  default-language: Haskell2010
+
+
+library homsl-benchmarks
+  exposed-modules:
+
+  other-modules:    HoRS.Parser
+
+  hs-source-dirs:   benchmarks
+
+  build-depends:    base,
+                    containers,
                     parsec,
-                    logict,
-                    hashable,
-                    unordered-containers
 
   ghc-options:      -Wall
                     -Wcompat

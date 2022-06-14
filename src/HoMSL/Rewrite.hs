@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -13,13 +12,6 @@ import qualified Data.HashSet as HashSet
 import qualified Data.List as List
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax
-import Data.Bifunctor
-
-main :: IO ()
-main = do
-  clauses <- parseProgram <$> readFile "input/partial"
-  forM_ (saturate (groupByHead clauses)) $ \cls -> do
-    print cls
 
 -- | Produce automaton clauses with the given head.
 saturate :: HashMap.HashMap String (HashSet.HashSet Formula) -> [Formula]
@@ -79,9 +71,11 @@ rewrite table (Atom _) = error "Term is not a valid atom!"
 rewrite table (Conj fs) =
   Conj <$> mapM (rewrite table) fs
 rewrite table (Exists x body) = do
-  modify (first (IdEnv.insert x (x, True)))
+  (vars, theta) <- get
+  put (IdEnv.insert x (x, True) vars, theta)
   body' <- rewrite table body
-  modify (bimap (IdEnv.delete x) (deleteSubst [x]))
+  (vars', theta') <- get
+  put (IdEnv.delete x vars', deleteSubst [x] theta')
   pure body'
 rewrite table (Clause xs body head)
   | all (`notElem` xs) (freeVars head) =
@@ -135,7 +129,7 @@ rewriteHead table (Atom tm@(App (Sym p) arg)) = do
               [ subst inst body',
                 Clause xs' body' (Atom head')
               ]
-      | length ss > 0,
+      | not (null ss),
         not (existential vars y) -> pure (Atom (App (Sym p) arg))
     noHo -> do
       -- (ExInst) and (Step/Refl)
@@ -143,9 +137,11 @@ rewriteHead table (Atom tm@(App (Sym p) arg)) = do
       inst <- match xs head tm
       rewrite table (subst inst body)
 rewriteHead table (Exists x body) = do
-  modify (first (IdEnv.insert x (x, True)))
+  (vars, theta) <- get
+  put (IdEnv.insert x (x, True) vars, theta)
   body' <- rewriteHead table body
-  modify (bimap (IdEnv.delete x) (deleteSubst [x]))
+  (vars, theta) <- get
+  put (IdEnv.delete x vars, deleteSubst [x] theta)
   pure body'
 rewriteHead _ _ = error "Unexpected head of nested clause!"
 
