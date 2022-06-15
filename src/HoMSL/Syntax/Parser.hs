@@ -85,7 +85,8 @@ pClause = do
 
 -- | Parse an atomic formula.
 pAtom :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
-pAtom = Atom <$> pTerm
+pAtom =
+  Atom <$> pTerm <|> pClause
 
 -- | Parse an applicative term.
 pTerm :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Term
