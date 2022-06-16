@@ -4,8 +4,8 @@
 module HoMSL.Rewrite where
 
 import Control.Monad.Memoization
-import Control.Monad.State
 import Control.Monad.ST
+import Control.Monad.State
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -17,16 +17,16 @@ import HoMSL.Syntax
 saturate :: HashMap.HashMap String (HashSet.HashSet Formula) -> [Formula]
 saturate clauses = runST $ mdo
   table <- memo $ \p -> do
-    clause@(AClause xs body head) <-
+    clause@(AClause xs head body) <-
       msum
         [ pure clause
           | clause <- HashSet.toList (HashMap.lookupDefault HashSet.empty p clauses)
         ]
-    let scope = IdEnv.fromList [ (x, (x, False)) | x <- xs ]
+    let scope = IdEnv.fromList [(x, (x, False)) | x <- xs]
     (body', (_, subst)) <- runStateT (rewrite table body) (scope, mempty)
     unless (IdEnv.null (substMap subst)) $
       error "Uncaught existential variable!"
-    pure (Clause xs body' head)
+    pure (Clause xs head body')
   runMemo (table "false")
 
 -- | Non-determinstically rewrite a goal formula into automaton form using the table.
@@ -42,7 +42,7 @@ rewrite table (Atom tm@(App (Sym p) arg)) = do
       | any (deepOrExistential vars) ss,
         not (existential vars y) -> do
           -- (Assm)
-          selected@(AClause ys body (Atom head)) <- lift $ table p
+          selected@(AClause ys (Atom head) body) <- lift $ table p
           let (ys', xs) = List.splitAt (length ys - length ss) ys
           guard
             ( length ys >= length ss
@@ -58,12 +58,12 @@ rewrite table (Atom tm@(App (Sym p) arg)) = do
           rewrite table $
             Conj
               [ subst inst body',
-                Clause xs' body' (Atom head')
+                Clause xs' (Atom head') body'
               ]
     nonHo
       | deepOrExistential vars arg -> do
           -- (ExInst) and (Step/Refl)
-          clause@(AClause xs body (Atom head)) <- lift $ table p
+          clause@(AClause xs (Atom head) body) <- lift $ table p
           inst <- match xs head tm
           rewrite table (subst inst body)
       | otherwise -> pure (Atom (App (Sym p) nonHo))
@@ -77,7 +77,7 @@ rewrite table (Exists x body) = do
   (vars', theta') <- get
   put (IdEnv.delete x vars', deleteSubst [x] theta')
   pure body'
-rewrite table (Clause xs body head)
+rewrite table (Clause xs head body)
   | all (`notElem` xs) (freeVars head) =
       -- (Scope1)
       pure head
@@ -90,14 +90,16 @@ rewrite table (Clause xs body head)
                   | clause <- HashSet.toList (HashMap.lookupDefault HashSet.empty p clauses)
                 ]
       (vars, theta) <- get
-      put (IdEnv.fromList [ (x, (x, False)) | x <- xs ] <> vars,
-             deleteSubst xs theta)
+      put
+        ( IdEnv.fromList [(x, (x, False)) | x <- xs] <> vars,
+          deleteSubst xs theta
+        )
       head' <- rewriteHead table' head
       (vars', theta') <- get
       put (IdEnv.deleteMany xs vars', theta')
       if head == head'
-        then pure (Clause xs body head')
-        else rewrite table (Clause xs body head')
+        then pure (Clause xs head' body)
+        else rewrite table (Clause xs head' body)
 
 -- | Non-determinstically rewrite the head of a nest clause.
 rewriteHead ::
@@ -111,7 +113,7 @@ rewriteHead table (Atom tm@(App (Sym p) arg)) = do
       | any (deepOrExistential vars) ss,
         not (existential vars y) -> do
           -- (Assm)
-          selected@(AClause ys body (Atom head)) <- lift $ table p
+          selected@(AClause ys (Atom head) body) <- lift $ table p
           let (ys', xs) = List.splitAt (length ys - length ss) ys
           guard
             ( length ys >= length ss
@@ -127,13 +129,14 @@ rewriteHead table (Atom tm@(App (Sym p) arg)) = do
           rewrite table $
             Conj
               [ subst inst body',
-                Clause xs' body' (Atom head')
+                Clause xs' (Atom head') body'
               ]
       | not (null ss),
-        not (existential vars y) -> pure (Atom (App (Sym p) arg))
+        not (existential vars y) ->
+          pure (Atom (App (Sym p) arg))
     noHo -> do
       -- (ExInst) and (Step/Refl)
-      clause@(AClause xs body (Atom head)) <- lift $ table p
+      clause@(AClause xs (Atom head) body) <- lift $ table p
       inst <- match xs head tm
       rewrite table (subst inst body)
 rewriteHead table (Exists x body) = do
@@ -148,7 +151,7 @@ rewriteHead _ _ = error "Unexpected head of nested clause!"
 -- | @matchHead xs head tm@ finds instance of head that instantitates xs.
 -- It may also instantiate existential variables from tm.
 -- The head is assumed to be shallow and linear.
-match :: [Id] -> Term -> Term -> StateT (IdEnv.IdEnv (Id, Bool), Subst) (Memo Formula s) Subst
+match :: [Id] -> Term Id -> Term Id -> StateT (IdEnv.IdEnv (Id, Bool), Subst) (Memo Formula s) Subst
 match xs (Var x) t
   | x `elem` xs = pure (mkSubst [(x, t)])
   | t == Var x = pure mempty
@@ -170,7 +173,7 @@ match xs t@(Apps (Sym fun) args) (Var x) = do
           -- Expand x with fresh arguments.
           let scope = fmap fst vars
               (_, xs) = uniqAways scope [Id "" (idSort arg) i | (Var arg, i) <- zip args [0 ..]]
-              vars' = [ (x, (x, True)) | x <- xs ]
+              vars' = [(x, (x, True)) | x <- xs]
               t' = Apps (Sym fun) (fmap Var xs)
           put (IdEnv.fromList vars' <> vars, mkSubst [(x, t)] <> theta)
           match xs t t' -- Match arguments
@@ -180,7 +183,7 @@ match xs t@(Apps (Sym fun) args) (Var x) = do
 match _ _ _ = empty
 
 -- | Check if a term is an existential variable or an application.
-deepOrExistential :: IdEnv.IdEnv (Id, Bool) -> Term -> Bool
+deepOrExistential :: IdEnv.IdEnv (Id, Bool) -> Term Id -> Bool
 deepOrExistential vars (Var x) = existential vars x
 deepOrExistential vars noNVar = True
 
@@ -201,7 +204,7 @@ restrictBody xs = Conj . go []
       | otherwise = acc
     go acc (Conj fs) =
       foldl' go acc fs
-    go acc f@(Clause ys body head)
+    go acc f@(Clause ys head body)
       -- We assume the body only concerns ys.
       | all (`elem` (xs ++ ys)) (freeVars head) = f : acc
       | otherwise = acc

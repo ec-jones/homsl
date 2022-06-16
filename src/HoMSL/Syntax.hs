@@ -5,10 +5,6 @@ module HoMSL.Syntax
   ( -- * Identifiers
     Id (..),
 
-    -- * Sorts
-    Sort (..),
-    sortArgs,
-
     -- * Terms
     Term (..),
     pattern Apps,
@@ -23,8 +19,9 @@ module HoMSL.Syntax
     pattern AClause,
     groupByHead,
 
-    -- * Parsing
-    parseProgram,
+    -- * Sorts
+    Sort (..),
+    sortArgs,
 
     -- * Scope
     IdEnv.Scope,
@@ -33,7 +30,7 @@ module HoMSL.Syntax
     IdEnv.uniqAways,
 
     -- * Substitution
-    IdEnv.Subst(..),
+    IdEnv.Subst (..),
     IdEnv.mkSubst,
     IdEnv.mkRenaming,
     IdEnv.lookupSubst,
@@ -44,5 +41,4 @@ where
 
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax.Formula
-import HoMSL.Syntax.Parser
 import HoMSL.Syntax.Term

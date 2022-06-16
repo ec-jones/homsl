@@ -28,14 +28,14 @@ module Socket
   )
 where
 
-import System.IO
-import GHC.IO.Handle
 import qualified Control.Monad.RWS as RWS
 import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
+import GHC.IO.Handle
+import HoMSL.Rewrite
 import HoMSL.Syntax
 import HoMSL.Syntax.Parser
-import HoMSL.Rewrite
+import System.IO
 
 -- * Socket Interface
 
@@ -181,7 +181,7 @@ instance (Socket soc1, Socket soc2, Socket soc3) => Socket (soc1, soc2, soc3) wh
 type AnalysisM =
   RWS.RWS
     SocketId -- 0 .. n - 1 socket's in scope
-    (IntMap.IntMap (SocketId, Term)) -- Top-level definitions
+    (IntMap.IntMap (SocketId, Term Id)) -- Top-level definitions
     Int -- Next top-level name.
 
 -- | A Socket identifier
@@ -197,7 +197,7 @@ fresh = do
   pure fun
 
 -- | Emit a top-level definition.
-emitFun :: Int -> Term -> AnalysisM ()
+emitFun :: Int -> Term Id -> AnalysisM ()
 emitFun fun defn = do
   nextSoc <- RWS.ask
   RWS.tell (IntMap.singleton fun (nextSoc - 1, defn))
@@ -214,7 +214,7 @@ getClauses m =
   let (main, defns) = RWS.evalRWS (go m) 0 0
    in (mkGoal main : [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns])
   where
-    go :: SocketM SocketId c -> AnalysisM Term
+    go :: SocketM SocketId c -> AnalysisM (Term Id)
     go (Pure a) = pure (Var cont)
     go (Socket k) = do
       liftedArgs <- getLiftedArgs
@@ -273,22 +273,21 @@ getClauses m =
 
 -- * Term/Formula fragments
 
-mkClause :: String -> (IntMap.Key, (SocketId, Term)) -> Formula
+mkClause :: String -> (IntMap.Key, (SocketId, Term Id)) -> Formula
 mkClause q (fun, (arity, defn)) =
   let args = cont : [mkSocketId i | i <- [0 .. arity]]
-   in Clause args (Atom (App (Sym q) defn)) (Atom (App (Sym q) (Apps (mkFunId fun) (fmap Var args))))
+   in Clause args (Atom (App (Sym q) (Apps (mkFunId fun) (fmap Var args)))) (Atom (App (Sym q) defn))
 
-mkGoal :: Term -> Formula
-mkGoal t = 
+mkGoal :: Term Id -> Formula
+mkGoal t =
   let done = Sym "Pure"
-   in 
-     Clause [] (Atom (App (Sym "Untracked") $ subst (mkSubst [(cont, done)]) t)) Ff
+   in Clause [] Ff (Atom (App (Sym "Untracked") $ subst (mkSubst [(cont, done)]) t))
 
 mkSocketId :: SocketId -> Id
 mkSocketId (SocketId soc) =
   Id {idName = "soc", idSort = I, idUnique = soc}
 
-mkFunId :: Int -> Term
+mkFunId :: Int -> Term Id
 mkFunId fun =
   Sym ("Fun_" ++ show fun)
 
@@ -326,7 +325,7 @@ server = do
     k ()
 
 test :: IO ()
-test =  do
+test = do
   automaton <- parseProgram <$> readFile "input/socket"
   let prog = getClauses server
       clauses = saturate (groupByHead (prog ++ automaton))

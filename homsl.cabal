@@ -6,9 +6,9 @@ license-file:       LICENSE
 category:           Verification
 
 library
-  exposed-modules:  HoMSL.Rewrite,
-                    HoMSL.Syntax,
-                    HoMSL.Syntax.Parser
+  exposed-modules:  HoMSL.Syntax,
+                    HoMSL.Syntax.Parser,
+                    HoMSL.Rewrite
 
   other-modules:    HoMSL.IdEnv,
                     HoMSL.Syntax.Term,

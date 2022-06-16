@@ -1,8 +1,9 @@
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- | Identifiers, sorts, and terms.
+-- | Identifiers, Sorts, and Terms.
 module HoMSL.Syntax.Term
   ( Id (..),
     Sort (..),
@@ -19,9 +20,9 @@ import Data.Foldable
 -- | An identifier
 data Id = Id
   { -- | The original name.
-    idName :: String,
-    -- | The identifier's sort.
-    idSort :: Sort,
+    idName :: !String,
+    -- | The sort of the identifier
+    idSort :: !Sort,
     -- | A unique used to avoid capture.
     idUnique :: {-# UNPACK #-} !Int
   }
@@ -58,16 +59,16 @@ sortArgs (s :-> t) =
 -- * Terms
 
 -- | Applicative terms.
-data Term
+data Term a
   = -- | Local variable.
-    Var Id
+    Var a
   | -- | Function symbol or program-level variable.
     Sym String
   | -- | Application.
-    App Term Term
-  deriving stock (Eq)
+    App (Term a) (Term a)
+  deriving stock (Functor, Foldable, Traversable, Eq)
 
-instance Show Term where
+instance Show a => Show (Term a) where
   showsPrec _ (Var x) = shows x
   showsPrec _ (Sym s) = showString s
   showsPrec p (Apps fun args) =
@@ -78,14 +79,14 @@ instance Show Term where
 {-# COMPLETE Apps #-}
 
 -- | Terms in spinal form.
-pattern Apps :: Term -> [Term] -> Term
+pattern Apps :: Term a -> [Term a] -> Term a
 pattern Apps fun args <-
   (viewApps -> (fun, reverse -> args))
   where
     Apps fun args = foldl' App fun args
 
 -- | Collect the arguments to a term (in reverse order).
-viewApps :: Term -> (Term, [Term])
+viewApps :: Term  a-> (Term a, [Term a])
 viewApps (Var x) = (Var x, [])
 viewApps (Sym f) = (Sym f, [])
 viewApps (App fun arg) =

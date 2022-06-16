@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -25,7 +26,7 @@ module HoMSL.IdEnv
     mkRenaming,
     lookupSubst,
     deleteSubst,
-    FreeVars (..),
+    FreeVars (..)
   )
 where
 
@@ -108,47 +109,48 @@ uniqAways = mapAccumL uniqAway
 -- * Substitution
 
 -- | A finite map from variables to terms.
-data Subst = Subst {
-  substMap :: IdEnv Term,
-  substScope :: Scope
-}
+data Subst = Subst
+  { substMap :: IdEnv (Term Id),
+    substScope :: Scope
+  }
 
 instance Semigroup Subst where
-  theta <> theta' = Subst {
-    substMap = substMap theta <> substMap theta',
-    substScope = substScope theta <> substScope theta'
-  }
+  theta <> theta' =
+    Subst
+      { substMap = substMap theta <> substMap theta',
+        substScope = substScope theta <> substScope theta'
+      }
 
 instance Monoid Subst where
   mempty = Subst mempty mempty
 
 -- | Make a substitution
-mkSubst :: [(Id, Term)] -> Subst
-mkSubst xts = 
-  Subst {
-    substMap = fromList [ (x, t) | (x, t) <- xts ],
-    substScope = foldMap freeVars [ t | (_, t) <- xts ]
-  }
+mkSubst :: [(Id, Term Id)] -> Subst
+mkSubst xts =
+  Subst
+    { substMap = fromList [(x, t) | (x, t) <- xts],
+      substScope = foldMap freeVars [t | (_, t) <- xts]
+    }
 
 -- | Make a renaming substitution.
 -- Equivalent to `mkSubst [ (x, Var y) | (x, y) <- xys ]`
 mkRenaming :: [(Id, Id)] -> Subst
 mkRenaming xys =
-  Subst {
-    substMap = fromList [ (x, Var y) | (x, y) <- xys ],
-    substScope = mkScope [ y | (_, y) <- xys ]
-  }
+  Subst
+    { substMap = fromList [(x, Var y) | (x, y) <- xys],
+      substScope = mkScope [y | (_, y) <- xys]
+    }
 
 -- | Lookup the value a variable is mapped to.
-lookupSubst :: Id -> Subst -> Maybe Term
+lookupSubst :: Id -> Subst -> Maybe (Term Id)
 lookupSubst x = lookup x . substMap
 
 -- | Remove a variable from a substitution
 deleteSubst :: [Id] -> Subst -> Subst
 deleteSubst xs subst =
-  subst {
-    substMap = deleteMany xs (substMap subst)
-  }
+  subst
+    { substMap = deleteMany xs (substMap subst)
+    }
 
 -- | Structures that contain free variables and support substitution.
 class FreeVars a where
@@ -158,7 +160,7 @@ class FreeVars a where
   -- | Apply a substitution.
   subst :: Subst -> a -> a
 
-instance FreeVars Term where
+instance FreeVars (Term Id) where
   freeVars (Var x) = fromList [(x, x)]
   freeVars (Sym f) = mempty
   freeVars (App fun arg) =
@@ -166,7 +168,7 @@ instance FreeVars Term where
 
   subst theta = go
     where
-      go :: Term -> Term
+      go :: Term Id -> Term Id
       go (Var x) =
         case lookup x (substMap theta) of
           Nothing -> Var x

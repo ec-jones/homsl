@@ -37,7 +37,7 @@ data Formula = Formula
 -- | The underlying shape of formula.
 data FormulaShape
   = Ff_
-  | Atom_ Term
+  | Atom_ (Term Id)
   | Conj_ (HashSet.HashSet Formula)
   | Clause_ [Id] Formula Formula
   | Exists_ Id Formula
@@ -50,7 +50,7 @@ instance Eq Formula where
       eqAlpha env Ff Ff = True
       eqAlpha (envl, envr) (Atom t) (Atom s) = eqAlphaTm t s
         where
-          eqAlphaTm :: Term -> Term -> Bool
+          eqAlphaTm :: Term Id -> Term Id -> Bool
           eqAlphaTm (Var x) (Var y)
             | Just i <- IdEnv.lookup x envl,
               Just j <- IdEnv.lookup y envr =
@@ -91,8 +91,8 @@ instance Show Formula where
       showConj [f] = showsPrec 3 f
       showConj (f : fs) =
         showsPrec 3 f . showString " /\\ " . showConj fs
-  showsPrec p (Clause xs body head) =
-    showParen (p > 1) (showForall xs . showBody body . showsPrec 2 head)
+  showsPrec p (Clause xs head body) =
+    showParen (p > 1) (showForall xs . showsPrec 2 head . showBody body)
     where
       showForall :: [Id] -> ShowS
       showForall [] = id
@@ -103,7 +103,7 @@ instance Show Formula where
 
       showBody :: Formula -> ShowS
       showBody (Conj []) = id
-      showBody f = showsPrec 2 f . showString " => "
+      showBody f = showString " <= " . showsPrec 2 f
   showsPrec p (Exists x body) =
     showParen (p > 1) (showString "exists " . shows x . showString ". " . showsPrec 2 body)
 
@@ -115,10 +115,10 @@ instance IdEnv.FreeVars Formula where
     Atom (IdEnv.subst theta t)
   subst theta (Conj fs) =
     Conj (IdEnv.subst theta <$> fs)
-  subst theta f@(Clause xs body head) =
+  subst theta f@(Clause xs head body) =
     let (_, xs') = IdEnv.uniqAways (IdEnv.substScope theta <> IdEnv.freeVars f) xs
         theta' = IdEnv.mkRenaming (zip xs xs') <> theta
-     in Clause xs' (IdEnv.subst theta' body) (IdEnv.subst theta' head)
+     in Clause xs' (IdEnv.subst theta' head) (IdEnv.subst theta' body)
   subst theta f@(Exists x body) =
     let (_, x') = IdEnv.uniqAway (IdEnv.substScope theta <> IdEnv.freeVars f) x
         theta' = IdEnv.mkRenaming [(x, x')] <> theta
@@ -143,7 +143,7 @@ pattern Ff <-
         }
 
 -- | An atomic formula.
-pattern Atom :: Term -> Formula
+pattern Atom :: Term Id -> Formula
 pattern Atom t <-
   Formula {formulaShape = Atom_ t}
   where
@@ -187,22 +187,22 @@ flattenConj (fs, fvs) (g : gs) =
 
 -- | A universally quantified clause.
 pattern Clause :: [Id] -> Formula -> Formula -> Formula
-pattern Clause xs body head <-
-  Formula (Clause_ xs body head) _ _
+pattern Clause xs head body <-
+  Formula (Clause_ xs head body) _ _
   where
-    Clause xs body (Conj heads) =
+    Clause xs (Conj heads) body =
       -- (ImpAnd)
-      Conj [Clause xs body head | head <- heads]
-    Clause xs body (Clause ys body' head') =
+      Conj [Clause xs head body | head <- heads]
+    Clause xs (Clause ys head' body') body =
       -- (ImpImp)
       let (_, ys') = IdEnv.uniqAways (IdEnv.mkScope xs) ys
           rho = IdEnv.mkRenaming (zip ys ys')
-       in Clause (xs ++ ys') (Conj [body, IdEnv.subst rho body']) (IdEnv.subst rho head')
-    Clause xs body head =
+       in Clause (xs ++ ys') (IdEnv.subst rho head') (Conj [body, IdEnv.subst rho body'])
+    Clause xs head body =
       Formula
-        { formulaShape = Clause_ xs body head,
+        { formulaShape = Clause_ xs head body,
           formulaFreeVars = IdEnv.deleteMany xs (IdEnv.freeVars body <> IdEnv.freeVars head),
-          formulaHash = hashClause xs (formulaHash body) (formulaHash head)
+          formulaHash = hashClause xs (formulaHash head) (formulaHash body)
         }
 
 -- | An existential quantification.
@@ -228,12 +228,12 @@ pattern Exists x body <-
 
 -- | An automaton(ish) clause
 pattern AClause :: [Id] -> Formula -> Formula -> Formula
-pattern AClause xs body head <- (viewAClause -> Just (xs, body, head))
+pattern AClause xs head body <- (viewAClause -> Just (xs, head, body))
 
 viewAClause :: Formula -> Maybe ([Id], Formula, Formula)
 viewAClause Ff = Just ([], Conj [], Ff)
 viewAClause (Atom tm) = Just ([], Conj [], Atom tm)
-viewAClause (Clause xs body head) = Just (xs, body, head)
+viewAClause (Clause xs head body) = Just (xs, head, body)
 viewAClause nonClause = Nothing
 
 -- | Group a list of clauses by head symbol.
@@ -244,9 +244,9 @@ groupByHead = foldl' go mempty
       HashMap.HashMap String (HashSet.HashSet Formula) ->
       Formula ->
       HashMap.HashMap String (HashSet.HashSet Formula)
-    go acc f@(AClause xs body Ff) =
+    go acc f@(AClause xs Ff body) =
       HashMap.insertWith (<>) "false" (HashSet.singleton f) acc
-    go acc f@(AClause xs body (Atom (App (Sym p) _))) =
+    go acc f@(AClause xs (Atom (App (Sym p) _)) body) =
       HashMap.insertWith (<>) p (HashSet.singleton f) acc
     go acc (AClause _ _ _) = error "Clause is not well-formed!"
     go acc (Conj fs) =
@@ -266,7 +266,7 @@ shift xs env =
     (fmap (+ length xs) env)
     (zip xs [0 ..])
 
-hashTerm :: Term -> HashFun
+hashTerm :: Term Id -> HashFun
 hashTerm (Var x) env =
   case IdEnv.lookup x env of
     Nothing -> hash ("Free", idUnique x)

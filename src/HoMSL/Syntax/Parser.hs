@@ -28,7 +28,7 @@ parseProgram str =
     Right fs -> fs
 
 -- | Lexer for Haskell style tokens.
-lexer :: GenTokenParser String u (Reader (HashMap.HashMap String Id))
+lexer :: GenTokenParser String Int (Reader (HashMap.HashMap String Id))
 lexer =
   makeTokenParser $
     LanguageDef
@@ -38,61 +38,61 @@ lexer =
         nestedComments = True,
         identStart = letter,
         identLetter = alphaNum <|> oneOf "_'",
-        opStart = oneOf "=/.;:-",
-        opLetter = oneOf "=>/\\.;:->",
-        reservedOpNames = ["=>", "/\\", ".", ":", ";", "->"],
-        reservedNames = ["false", "forall", "i", "o"],
+        opStart = oneOf "</;",
+        opLetter = oneOf "<=/\\.;-",
+        reservedOpNames = ["<=", "/\\", ".", ":", ";", "->"],
+        reservedNames = ["false", "i", "o"],
         caseSensitive = True
       }
 
 -- | Parse a clause.
 pClause :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
 pClause = do
-  -- Collect binders
   xs <-
     ( do
         reserved lexer "forall"
-        xs <- many (pSymbolDec True)
+        xs <- many pIdenDecl
         reservedOp lexer "."
         pure xs
       )
       <|> pure []
 
-  -- Extend scope for parsing body and head
   local (HashMap.fromList [(idName x, x) | x <- xs] <>) $ do
-    try
+    head <- pHead
+
+    body <-
       ( do
-          -- Body is a conjunction of atoms.
-          body <- sepBy1 pAtom (reservedOp lexer "/\\")
+          reservedOp lexer "<="
+          pBody
+        )
+        <|> pure (Conj [])
 
-          reservedOp lexer "=>"
+    let (us, es) = List.partition (`IdEnv.member` IdEnv.freeVars head) xs
+        body' = foldl' (flip Exists) body es
 
-          -- Head is either atom or false.
-          head <- (Ff <$ reserved lexer "false") <|> pAtom
+    pure (Clause (toList us) head body')
 
-          -- Partition variables into truly universal and existential.
-          let (us, es) = List.partition (`IdEnv.member` IdEnv.freeVars head) xs
-              body' = foldl' (flip Exists) (Conj body) es
+-- | Parse the head of a clause.
+pHead :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
+pHead =
+  (Ff <$ reservedOp lexer "false")
+    <|> (Atom <$> pTerm)
 
-          pure (Clause us body' head)
-      )
-      <|> ( do
-              -- Facts
-              head <- pAtom
-              let us = List.filter (`IdEnv.member` IdEnv.freeVars head) xs
-              pure (Clause us (Conj []) head)
-          )
-
--- | Parse an atomic formula.
-pAtom :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
-pAtom =
-  Atom <$> pTerm <|> pClause
+-- | Parse the body of a clause.
+pBody :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
+pBody =
+  Conj <$> sepEndBy pAtom (reservedOp lexer "/\\") <?> "body"
+  where
+    pAtom :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
+    pAtom =
+      pClause
+        <|> Atom <$> pTerm
 
 -- | Parse an applicative term.
-pTerm :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Term
+pTerm :: ParsecT String Int (Reader (HashMap.HashMap String Id)) (Term Id)
 pTerm = chainl1 inner (pure App) <?> "term"
   where
-    inner :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Term
+    inner :: ParsecT String Int (Reader (HashMap.HashMap String Id)) (Term Id)
     inner =
       parens lexer pTerm
         <|> do
@@ -104,9 +104,9 @@ pTerm = chainl1 inner (pure App) <?> "term"
                 Just x -> pure (Var x)
             else pure (Sym f)
 
--- | Parse a declaration of a function symbol.
-pSymbolDec :: Bool -> ParsecT String Int (Reader (HashMap.HashMap String Id)) Id
-pSymbolDec p = (if p then parens lexer else id) $ do
+-- | Parse a declaration of a local identifier.
+pIdenDecl :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Id
+pIdenDecl = parens lexer $ do
   x <- identifier lexer
   reservedOp lexer ":"
   s <- pSort
