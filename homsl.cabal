@@ -71,7 +71,7 @@ library homsl-socket
   default-language: Haskell2010
 
 
-library homsl-benchmarks
+library hors-benchmarks
   exposed-modules:
 
   other-modules:    HoRS.Parser
@@ -79,8 +79,11 @@ library homsl-benchmarks
   hs-source-dirs:   benchmarks
 
   build-depends:    base,
+                    mtl,
                     containers,
+                    unordered-containers,
                     parsec,
+                    homsl,
 
   ghc-options:      -Wall
                     -Wcompat
