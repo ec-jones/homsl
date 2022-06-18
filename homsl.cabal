@@ -42,10 +42,10 @@ library
   
   default-language: Haskell2010
 
-library homsl-socket
+library socket
   exposed-modules:  Socket
 
-  hs-source-dirs:   sockets
+  hs-source-dirs:   socket
 
   build-depends:    base,
                     mtl,
@@ -71,18 +71,19 @@ library homsl-socket
   default-language: Haskell2010
 
 
-library hors-benchmarks
+library hors
   exposed-modules:
 
-  other-modules:    HoRS.Parser
+  other-modules:    Parser
 
-  hs-source-dirs:   benchmarks
+  hs-source-dirs:   hors
 
   build-depends:    base,
                     mtl,
                     containers,
                     unordered-containers,
                     parsec,
+                    unification-fd,
                     homsl,
 
   ghc-options:      -Wall

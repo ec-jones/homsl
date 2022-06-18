@@ -1,17 +1,21 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
-module HoRS.Parser where
+module Parser where
 
-import Control.Monad.RWS
+import Control.Monad.State
 import Control.Monad.Reader
+import Control.Monad.ST
+import Debug.Trace
 import Data.Char
 import Data.Foldable
-import Data.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
+import Data.Maybe
+import Data.STRef
 import Data.Semigroup
 import HoMSL.Syntax
 import Text.Parsec
@@ -119,141 +123,123 @@ pTerm = chainl1 inner (pure App) <?> "term"
 
 -- * Sort Inference
 
--- | Sorts with unification variables.
-data PSort
-  = PI
-  | PO
-  | PFun PSort PSort
-  | PVar Int
-  | PSym String
-  deriving stock (Eq, Show)
-
-psortArgs :: PSort -> [PSort]
-psortArgs PI = []
-psortArgs PO = []
-psortArgs (PFun s t) =
-  s : psortArgs t
-psortArgs _ = error "Sort args are unknown!"
-
--- | Sort variable substitution.
-data SortSubst = SortSubst
-  { symSubst :: HashMap.HashMap String PSort,
-    varSubst :: IntMap.IntMap PSort
-  }
-  deriving stock Show
-
-instance Semigroup SortSubst where
-  theta1 <> theta2 =
-    SortSubst
-      { symSubst = (apply theta1 <$> symSubst theta2) <> symSubst theta1,
-        varSubst = (apply theta1 <$> varSubst theta2) <> varSubst theta1
-      }
-
-instance Monoid SortSubst where
-  mempty = SortSubst mempty mempty
-
--- TODO: Use inferred sorts to generated clauses.
-
 -- | Find the sorts of terminals and non-terminals from the HoRS problem.
-runInfer :: ([Rule], [Transition]) -> HashMap.HashMap String PSort
-runInfer (rules, trans) =
-  let ((theta, _), _) =
-        execRWS (mapM_ inferRule rules) mempty (mempty, 0)
-   in symSubst theta
+runInfer :: ([Rule], [Transition]) -> HashMap.HashMap String Sort
+runInfer (rules, trans) = runST $ do
+  env <- execStateT (mapM_ inferRule rules) mempty
+  mapM toSort env
 
 -- | Infer sorts for a rule.
-inferRule :: Rule -> RWS (HashMap.HashMap String PSort) () (SortSubst, Int) ()
+inferRule :: Rule -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
 inferRule (Rule f xs rhs) = do
-  (subst, _) <- get
-  case HashMap.lookup f (symSubst subst) of
-    Nothing -> do
-      ss <- replicateM (length xs) fresh
-      unify (PSym f) (foldr PFun PI ss)
-      local (HashMap.fromList (zip xs ss) <>) $
-        matchTerm rhs PI
-    Just t -> do
-      let ss = psortArgs t
-      local (HashMap.fromList (zip xs ss) <>) $
-        matchTerm rhs PI
+  s <- lookupSort f
+
+  -- Create fresh unification variables for the arguments.
+  ss <- replicateM (length xs) (lift $ UVar <$> newSTRef Nothing)
+  lift $ unify s (foldr UFun UI ss)
+  
+  -- Match rhs in local environment.
+  env <- get
+  put (HashMap.fromList (zip xs ss) <> env)
+  matchTerm rhs UI
+  put env
 
 -- | Infer a term's sort.
-inferTerm :: Term String -> RWS (HashMap.HashMap String PSort) () (SortSubst, Int) PSort
-inferTerm (Var x) =
-  asks (HashMap.lookup x) >>= \case
-    Nothing -> error "Variable not in scope!"
-    Just s -> pure s
-inferTerm (Sym f) = pure (PSym f)
+inferTerm :: Term String -> StateT (HashMap.HashMap String (USort s)) (ST s) (USort s)
+inferTerm (Var x) = lookupSort x
+inferTerm (Sym f) = lookupSort f
 inferTerm (App fun arg) = do
   s <- inferTerm fun
   case s of
-    PFun t r -> do
+    UFun t r -> do
       matchTerm arg t
       pure r
     _ -> do
       t <- inferTerm arg
-      r <- fresh
-      unify s (PFun t r)
-      pure r
+      lift $ do
+        r <- UVar <$> newSTRef Nothing
+        unify s (UFun t r)
+        pure r
 
 -- | Attempt to match a term to a given sort.
-matchTerm :: Term String -> PSort -> RWS (HashMap.HashMap String PSort) () (SortSubst, Int) ()
-matchTerm (Var x) s =
-  asks (HashMap.lookup x) >>= \case
-    Nothing -> error "Variable not in scope!"
-    Just t -> unify t s
-matchTerm (Sym f) s =
-  unify (PSym f) s
+matchTerm :: Term String -> USort s -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
+matchTerm (Var x) s = do
+  t <- lookupSort x
+  lift (unify t s)
+matchTerm (Sym f) s = do
+  t <- lookupSort f
+  lift (unify t s)
 matchTerm (App fun arg) s = do
   t <- inferTerm arg
-  matchTerm fun (PFun t s)
+  matchTerm fun (UFun t s)
 
--- | Apply a substitution to a sort.
-apply :: SortSubst -> PSort -> PSort
-apply theta PI = PI
-apply theta PO = PO
-apply theta (PFun s t) =
-  PFun (apply theta s) (apply theta t)
-apply theta (PVar i) =
-  case IntMap.lookup i (varSubst theta) of
-    Nothing -> PVar i
-    Just s -> s
-apply theta (PSym i) =
-  case HashMap.lookup i (symSubst theta) of
-    Nothing -> PSym i
-    Just s -> s
+-- | Find the sort of a symbol or variable.
+lookupSort :: String -> StateT (HashMap.HashMap String (USort s)) (ST s) (USort s)
+lookupSort x = do
+  env <- get
+  case HashMap.lookup x env of
+    Nothing -> do
+      i <- lift $ newSTRef Nothing
+      modify (HashMap.insert x (UVar i))
+      pure (UVar i)
+    Just s -> pure s
 
--- | Unify sorts without occur check.
-unify :: PSort -> PSort -> RWS (HashMap.HashMap String PSort) () (SortSubst, Int) ()
-unify s t
-  | s == t = pure ()
-unify (PFun s t) (PFun s' t') = do
+-- | Partial sorts with unification variables.
+data USort s
+  = UI
+  | UO
+  | UFun (USort s) (USort s)
+  | UVar (UVar s)
+  deriving stock (Eq)
+
+-- | Unification variables.
+type UVar s =
+  STRef s (Maybe (USort s))
+
+-- | Default unsolved variables to individuals.
+toSort :: USort s -> ST s Sort
+toSort UI = pure I
+toSort UO = pure O
+toSort (UFun s t) =
+  (:->) <$> toSort s <*> toSort t
+toSort (UVar i) = 
+  readSTRef i >>= \case
+    Nothing -> pure I -- error "Unsolved sort variable!"
+    Just s -> toSort s
+
+-- | Unify two partial sorts.
+unify :: USort s -> USort s -> ST s ()
+unify UI UI = pure ()
+unify UO UO = pure ()
+unify (UFun s t) (UFun s' t') = do
   unify s s'
   unify t t'
-unify (PSym i) s = do
-  (theta, j) <- get
-  case HashMap.lookup i (symSubst theta) of
-    Nothing -> do
-      let theta' = SortSubst (HashMap.singleton i s) mempty
-      put (theta' <> theta, j)
-    Just t ->
-      unify t s
-unify s (PSym i) =
-  unify (PSym i) s
-unify (PVar i) s = do
-  (theta, j) <- get
-  case IntMap.lookup i (varSubst theta) of
-    Nothing -> do
-      let theta' = SortSubst mempty (IntMap.singleton i s)
-      put (theta' <> theta, j)
-    Just t ->
-      unify t s
-unify s (PVar i) =
-  unify (PVar i) s
-unify _ _ = error "Sorts don't match!"
+unify (UVar x) (UVar y) = do
+  (x', s) <- pathCompression x
+  (y', t) <- pathCompression y
+  if x' == y'
+    then pure ()
+    else 
+      case (s, t) of
+        (Nothing, _) -> writeSTRef x' (Just (UVar y'))
+        (_, Nothing) -> writeSTRef y' (Just (UVar x'))
+        (Just s', Just t') ->
+          unify s' t'
+unify (UVar x) s = do
+  (x', t) <- pathCompression x
+  case t of
+    Nothing -> writeSTRef x' (Just s)
+    Just t' -> unify t' s
+unify s (UVar x) = unify (UVar x) s
+unify _ _ = error "Failed to unify sorts!"
 
--- | Fresh unification variable.
-fresh :: RWS (HashMap.HashMap String PSort) () (SortSubst, Int) PSort
-fresh = do
-  (subst, s) <- get
-  put (subst, s + 1)
-  pure (PVar s)
+-- | Path compression.
+pathCompression :: UVar s -> ST s (UVar s, Maybe (USort s))
+pathCompression x =
+  readSTRef x >>= \case
+    Nothing -> pure (x, Nothing)
+    Just (UVar z) -> do
+      (w, s) <- pathCompression z
+      writeSTRef x (Just (UVar w))
+      pure (w, s)
+    Just nonVar -> pure (x, Just nonVar)
