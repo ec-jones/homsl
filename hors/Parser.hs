@@ -1,22 +1,16 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 
 module Parser where
 
-import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.ST
-import Debug.Trace
+import Control.Monad.State
 import Data.Char
-import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
-import Data.Maybe
 import Data.STRef
-import Data.Semigroup
 import HoMSL.Syntax
 import Text.Parsec
 import Text.Parsec.Token
@@ -39,11 +33,13 @@ data Rule
 -- * Parsing
 
 -- | Parse a combined HoRS problem.
-parseHoRS :: String -> ([Rule], [Transition])
+parseHoRS :: String -> [Formula]
 parseHoRS str =
   case runReader (runParserT (pHoRS <* eof) () "" str) mempty of
     Left err -> error (show err)
-    Right fs -> fs
+    Right (rules, trans) ->
+      let env = inferSorts (rules, trans)
+       in map (mkTransitionClause env) trans
 
 lexer :: GenTokenParser String u (Reader (HashSet.HashSet String))
 lexer =
@@ -124,25 +120,49 @@ pTerm = chainl1 inner (pure App) <?> "term"
 -- * Sort Inference
 
 -- | Find the sorts of terminals and non-terminals from the HoRS problem.
-runInfer :: ([Rule], [Transition]) -> HashMap.HashMap String Sort
-runInfer (rules, trans) = runST $ do
-  env <- execStateT (mapM_ inferRule rules) mempty
+inferSorts :: ([Rule], [Transition]) -> HashMap.HashMap String Sort
+inferSorts (rules, trans) = runST $ do
+  env <- execStateT (mapM_ inferRuleSort rules >> mapM_ inferTransSort trans) mempty
   mapM toSort env
 
 -- | Infer sorts for a rule.
-inferRule :: Rule -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
-inferRule (Rule f xs rhs) = do
+inferRuleSort :: Rule -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
+inferRuleSort (Rule f xs rhs) = do
   s <- lookupSort f
 
   -- Create fresh unification variables for the arguments.
   ss <- replicateM (length xs) (lift $ UVar <$> newSTRef Nothing)
   lift $ unify s (foldr UFun UI ss)
-  
+
   -- Match rhs in local environment.
-  env <- get
-  put (HashMap.fromList (zip xs ss) <> env)
+  modify (HashMap.fromList (zip xs ss) <>)
   matchTerm rhs UI
-  put env
+  modify (\env -> foldr HashMap.delete env xs)
+
+-- | Infer sorts for a transition.
+inferTransSort :: Transition -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
+inferTransSort (Transition q f rhs) = do
+  s <- lookupSort q
+  lift $ unify s (UFun UI UO)
+
+  t <- lookupSort f
+  go t (maybe 0 fst (IntMap.lookupMax rhs))
+  where
+    -- Unify sort with /minimum/ arity.
+    go :: USort s -> Int -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
+    go UI n
+      | n <= 0 = pure ()
+      | otherwise = error "Arities don't match!"
+    go UO _ = error "Unexpected higher-order predicate!"
+    go (UFun s t) n = do
+      lift $ unify s UI
+      go t (n - 1)
+    go (UVar i) n
+      | n <= 0 = pure ()
+      | otherwise = do
+          j <- lift $ newSTRef Nothing
+          lift $ unify (UVar i) (UFun UI (UVar j))
+          go (UVar j) (n - 1)
 
 -- | Infer a term's sort.
 inferTerm :: Term String -> StateT (HashMap.HashMap String (USort s)) (ST s) (USort s)
@@ -173,7 +193,7 @@ matchTerm (App fun arg) s = do
   t <- inferTerm arg
   matchTerm fun (UFun t s)
 
--- | Find the sort of a symbol or variable.
+-- | Find the sort of a symbol or variable or create a fresh unification variable if not present.
 lookupSort :: String -> StateT (HashMap.HashMap String (USort s)) (ST s) (USort s)
 lookupSort x = do
   env <- get
@@ -202,7 +222,7 @@ toSort UI = pure I
 toSort UO = pure O
 toSort (UFun s t) =
   (:->) <$> toSort s <*> toSort t
-toSort (UVar i) = 
+toSort (UVar i) =
   readSTRef i >>= \case
     Nothing -> pure I -- error "Unsolved sort variable!"
     Just s -> toSort s
@@ -219,12 +239,11 @@ unify (UVar x) (UVar y) = do
   (y', t) <- pathCompression y
   if x' == y'
     then pure ()
-    else 
-      case (s, t) of
-        (Nothing, _) -> writeSTRef x' (Just (UVar y'))
-        (_, Nothing) -> writeSTRef y' (Just (UVar x'))
-        (Just s', Just t') ->
-          unify s' t'
+    else case (s, t) of
+      (Nothing, _) -> writeSTRef x' (Just (UVar y'))
+      (_, Nothing) -> writeSTRef y' (Just (UVar x'))
+      (Just s', Just t') ->
+        unify s' t'
 unify (UVar x) s = do
   (x', t) <- pathCompression x
   case t of
@@ -243,3 +262,20 @@ pathCompression x =
       writeSTRef x (Just (UVar w))
       pure (w, s)
     Just nonVar -> pure (x, Just nonVar)
+
+-- * Clause Construction
+
+-- | Make a transition clause.
+mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> Formula
+mkTransitionClause env (Transition q f rhs) =
+  case HashMap.lookup f env of
+    Nothing -> error "State not in scope!"
+    Just s ->
+      let xs = [Id "x" sArg i | (sArg, i) <- zip (sortArgs s) [1 ..]]
+          head = Atom (App (Sym q) (Apps (Sym f) (map Var xs)))
+          body =
+            Conj
+              [ Atom (App (Sym p) (Var (xs !! (i - 1))))
+                | (i, p) <- IntMap.toList rhs
+              ]
+       in Clause xs head body
