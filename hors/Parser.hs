@@ -9,6 +9,7 @@ import Control.Monad.State
 import Data.Char
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import qualified Data.List as List
 import qualified Data.IntMap as IntMap
 import Data.STRef
 import HoMSL.Syntax
@@ -33,13 +34,15 @@ data Rule
 -- * Parsing
 
 -- | Parse a combined HoRS problem.
-parseHoRS :: String -> [Formula]
-parseHoRS str =
+horsToHoMSL :: String -> [Formula]
+horsToHoMSL str =
   case runReader (runParserT (pHoRS <* eof) () "" str) mempty of
     Left err -> error (show err)
     Right (rules, trans) ->
       let env = inferSorts (rules, trans)
-       in map (mkTransitionClause env) trans
+          qs = HashMap.keys $ HashMap.filter isPredicate env
+       in map (mkTransitionClause env) trans ++
+            concatMap (mkRuleClauses qs env) rules
 
 lexer :: GenTokenParser String u (Reader (HashSet.HashSet String))
 lexer =
@@ -279,3 +282,20 @@ mkTransitionClause env (Transition q f rhs) =
                 | (i, p) <- IntMap.toList rhs
               ]
        in Clause xs head body
+
+-- | Make clauses for each state and production rule.
+mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> [Formula]
+mkRuleClauses qs env (Rule f xs rhs) = 
+  case HashMap.lookup f env of
+    Nothing -> error "State not in scope!"
+    Just s -> do
+      q <- qs -- A clause for each state
+      -- xs <-> xs' could probably be made more efficient?
+      let xs' = [Id x sArg i | (x, sArg, i) <- zip3 xs (sortArgs s) [1 ..]]
+          rho x =
+            case List.elemIndex x xs of
+              Nothing -> error "Unbound variable in production rul!"
+              Just i -> xs' !! i 
+          head = Atom (App (Sym q) (Apps (Sym f) (map Var xs')))
+          body = Atom (App (Sym q) (fmap rho rhs))
+      pure (Clause xs' head body)

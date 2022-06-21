@@ -22,6 +22,7 @@ module HoMSL.Syntax
     -- * Sorts
     Sort (..),
     sortArgs,
+    isPredicate,
 
     -- * Scope
     IdEnv.Scope,

@@ -5,9 +5,15 @@
 
 -- | Identifiers, Sorts, and Terms.
 module HoMSL.Syntax.Term
-  ( Id (..),
+  ( -- * Identifiers
+    Id (..),
+
+    -- * Sorts
     Sort (..),
     sortArgs,
+    isPredicate,
+
+    -- * Terms
     Term (..),
     pattern Apps,
   )
@@ -55,6 +61,13 @@ sortArgs I = []
 sortArgs O = []
 sortArgs (s :-> t) =
   s : sortArgs t
+
+-- | Does the sort ultimately return a proposition.
+isPredicate :: Sort -> Bool
+isPredicate I = False
+isPredicate O = True
+isPredicate (s :-> t) =
+  isPredicate t
 
 -- * Terms
 
