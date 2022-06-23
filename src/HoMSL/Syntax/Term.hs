@@ -16,6 +16,7 @@ module HoMSL.Syntax.Term
     -- * Terms
     Term (..),
     pattern Apps,
+    funSymbol,
   )
 where
 
@@ -105,3 +106,8 @@ viewApps (Sym f) = (Sym f, [])
 viewApps (App fun arg) =
   let (fun', args) = viewApps fun
    in (fun', arg : args)
+
+-- | Identify the function symbol (or prediate) at the head of a term.
+funSymbol :: Term a -> Maybe String
+funSymbol (Apps (Sym f) _) = Just f
+funSymbol _ = Nothing

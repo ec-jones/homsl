@@ -12,26 +12,26 @@ import qualified Data.HashSet as HashSet
 import qualified Data.List as List
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax
+import Debug.Trace
+
+-- TODO: Merge rewrite procedures
 
 -- | Produce automaton clauses with the given head.
-saturate :: HashMap.HashMap String (HashSet.HashSet Formula) -> [Formula]
+saturate :: ClauseSet -> [Formula]
 saturate clauses = runST $ mdo
-  table <- memo $ \p -> do
-    clause@(AClause xs head body) <-
-      msum
-        [ pure clause
-          | clause <- HashSet.toList (HashMap.lookupDefault HashSet.empty p clauses)
-        ]
+  table <- memo $ \(p, f) -> do
+    clause@(AClause xs head body) <- msum [ pure clause | clause <- lookupClauses p f clauses ]
+    traceM ("Rewriting: " ++ show clause)
     let scope = IdEnv.fromList [(x, (x, False)) | x <- xs]
     (body', (_, subst)) <- runStateT (rewrite table body) (scope, mempty)
     unless (IdEnv.null (substMap subst)) $
       error "Uncaught existential variable!"
     pure (Clause xs head body')
-  runMemo (table "false")
+  runMemo (table ("false", Nothing))
 
 -- | Non-determinstically rewrite a goal formula into automaton form using the table.
 rewrite ::
-  (String -> Memo Formula s Formula) ->
+  ((String, Maybe String) -> Memo Formula s Formula) ->
   Formula ->
   StateT (IdEnv.IdEnv (Id, Bool), Subst) (Memo Formula s) Formula
 rewrite table Ff = pure Ff
@@ -42,7 +42,7 @@ rewrite table (Atom tm@(App (Sym p) arg)) = do
       | any (deepOrExistential vars) ss,
         not (existential vars y) -> do
           -- (Assm)
-          selected@(AClause ys (Atom head) body) <- lift $ table p
+          selected@(AClause ys (Atom head) body) <- lift $ table (p, funSymbol arg)
           let (ys', xs) = List.splitAt (length ys - length ss) ys
           guard
             ( length ys >= length ss
@@ -63,7 +63,7 @@ rewrite table (Atom tm@(App (Sym p) arg)) = do
     nonHo
       | deepOrExistential vars arg -> do
           -- (ExInst) and (Step/Refl)
-          clause@(AClause xs (Atom head) body) <- lift $ table p
+          clause@(AClause xs (Atom head) body) <- lift $ table (p, funSymbol arg)
           inst <- match xs head tm
           rewrite table (subst inst body)
       | otherwise -> pure (Atom (App (Sym p) nonHo))
@@ -83,11 +83,12 @@ rewrite table (Clause xs head body)
       pure head
   | otherwise = do
       let clauses = groupByHead [body]
-          table' p =
-            table p
+          -- Locally extend table with clauses in the body.
+          table' (p, f) =
+            table (p, f)
               <|> msum
                 [ pure clause
-                  | clause <- HashSet.toList (HashMap.lookupDefault HashSet.empty p clauses)
+                  | clause <- lookupClauses p f clauses
                 ]
       (vars, theta) <- get
       put
@@ -103,7 +104,7 @@ rewrite table (Clause xs head body)
 
 -- | Non-determinstically rewrite the head of a nest clause.
 rewriteHead ::
-  (String -> Memo Formula s Formula) ->
+  ((String, Maybe String) -> Memo Formula s Formula) ->
   Formula ->
   StateT (IdEnv.IdEnv (Id, Bool), Subst) (Memo Formula s) Formula
 rewriteHead table (Atom tm@(App (Sym p) arg)) = do
@@ -113,7 +114,7 @@ rewriteHead table (Atom tm@(App (Sym p) arg)) = do
       | any (deepOrExistential vars) ss,
         not (existential vars y) -> do
           -- (Assm)
-          selected@(AClause ys (Atom head) body) <- lift $ table p
+          selected@(AClause ys (Atom head) body) <- lift $ table (p, Nothing)
           let (ys', xs) = List.splitAt (length ys - length ss) ys
           guard
             ( length ys >= length ss
@@ -136,7 +137,7 @@ rewriteHead table (Atom tm@(App (Sym p) arg)) = do
           pure (Atom (App (Sym p) arg))
     noHo -> do
       -- (ExInst) and (Step/Refl)
-      clause@(AClause xs (Atom head) body) <- lift $ table p
+      clause@(AClause xs (Atom head) body) <- lift $ table (p, funSymbol arg)
       inst <- match xs head tm
       rewrite table (subst inst body)
 rewriteHead table (Exists x body) = do

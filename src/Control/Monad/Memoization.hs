@@ -11,6 +11,7 @@ module Control.Monad.Memoization
   )
 where
 
+import Debug.Trace
 import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.Logic
@@ -54,7 +55,7 @@ liftST :: ST s a -> Memo r s a
 liftST = Memo . lift
 
 -- | Memoize a non-deterministic function.
-memo :: (Hashable a, Hashable b) => (a -> Memo b s b) -> ST s (a -> Memo b s b)
+memo :: (Show a, Show b, Hashable a, Hashable b) => (a -> Memo b s b) -> ST s (a -> Memo b s b)
 memo f = do
   ref <- newSTRef HashMap.empty
   pure $ \x ->
@@ -64,6 +65,7 @@ memo f = do
       case HashMap.lookup x table of
         Nothing -> do
           -- Producer
+          traceM ("Producer: " ++ show x)
           update (HashSet.empty, [k]) table
           y <- f x
           table' <- liftST $ readSTRef ref
@@ -72,9 +74,11 @@ memo f = do
             Just (ys, ks)
               | y `HashSet.member` ys -> mzero
               | otherwise -> do
+                  traceM ("Produce: " ++ show (x, y))
                   update (HashSet.insert y ys, ks) table'
                   msum [k' y | k' <- ks]
         Just (ys, ks) -> do
           -- Consumer
+          traceM ("Consume: " ++ show x)
           update (ys, k : ks) table
           msum [k y | y <- HashSet.toList ys]

@@ -13,6 +13,7 @@ import qualified Data.List as List
 import qualified Data.IntMap as IntMap
 import Data.STRef
 import HoMSL.Syntax
+import HoMSL.Rewrite
 import Text.Parsec
 import Text.Parsec.Token
 
@@ -41,8 +42,9 @@ horsToHoMSL str =
     Right (rules, trans) ->
       let env = inferSorts (rules, trans)
           qs = HashMap.keys $ HashMap.filter isPredicate env
-       in map (mkTransitionClause env) trans ++
-            concatMap (mkRuleClauses qs env) rules
+       in saturate $ groupByHead (mkGoal : 
+              map (mkTransitionClause env) trans ++
+            concatMap (mkRuleClauses qs env) rules)
 
 lexer :: GenTokenParser String u (Reader (HashSet.HashSet String))
 lexer =
@@ -267,6 +269,10 @@ pathCompression x =
     Just nonVar -> pure (x, Just nonVar)
 
 -- * Clause Construction
+
+mkGoal :: Formula
+mkGoal =
+  Clause [] Ff (Atom (App (Sym "q0") (Sym "S")))
 
 -- | Make a transition clause.
 mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> Formula

@@ -1,16 +1,21 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- | Logical formulas
+-- | Logical formulas and clause sets.
 module HoMSL.Syntax.Formula
-  ( Formula,
+  ( -- * Formulas,
+    Formula,
     pattern Ff,
     pattern Atom,
     pattern Conj,
     pattern Exists,
     pattern Clause,
     pattern AClause,
+
+    -- * Clause Set
+    ClauseSet (..),
     groupByHead,
+    lookupClauses,
   )
 where
 
@@ -226,7 +231,8 @@ pattern Exists x body <-
             }
       | otherwise = body
 
--- | An automaton(ish) clause
+-- | An automaton headed clause.
+-- This pattern does not inspect the body, but will match Ff and Atom.
 pattern AClause :: [Id] -> Formula -> Formula -> Formula
 pattern AClause xs head body <- (viewAClause -> Just (xs, head, body))
 
@@ -236,22 +242,49 @@ viewAClause (Atom tm) = Just ([], Conj [], Atom tm)
 viewAClause (Clause xs head body) = Just (xs, head, body)
 viewAClause nonClause = Nothing
 
+-- | A collection of clauses grouped by head symbols.
+data ClauseSet = 
+  ClauseSet {
+    goals :: HashSet.HashSet Formula,
+    automaton :: HashMap.HashMap String (HashMap.HashMap (Maybe String) (HashSet.HashSet Formula))
+  }
+
+instance Semigroup ClauseSet where
+  cs1 <> cs2 = ClauseSet {
+    goals = goals cs1 <> goals cs2,
+    automaton =
+      HashMap.unionWith (<>) (automaton cs1) (automaton cs2)
+  }
+
+instance Monoid ClauseSet where
+  mempty = ClauseSet mempty mempty
+
 -- | Group a list of clauses by head symbol.
-groupByHead :: [Formula] -> HashMap.HashMap String (HashSet.HashSet Formula)
-groupByHead = foldl' go mempty
+groupByHead :: [Formula] -> ClauseSet
+groupByHead = foldMap go
   where
-    go ::
-      HashMap.HashMap String (HashSet.HashSet Formula) ->
-      Formula ->
-      HashMap.HashMap String (HashSet.HashSet Formula)
-    go acc f@(AClause xs Ff body) =
-      HashMap.insertWith (<>) "false" (HashSet.singleton f) acc
-    go acc f@(AClause xs (Atom (App (Sym p) _)) body) =
-      HashMap.insertWith (<>) p (HashSet.singleton f) acc
-    go acc (AClause _ _ _) = error "Clause is not well-formed!"
-    go acc (Conj fs) =
-      foldl' go acc fs
-    go acc (Exists _ _) = error "Unexpected top-level existential!"
+    go :: Formula -> ClauseSet
+    go fm@(AClause xs Ff body) =
+      ClauseSet (HashSet.singleton fm) mempty
+    go fm@(AClause xs (Atom (App (Sym p) (Apps (Sym f) _))) body) =
+      ClauseSet mempty (HashMap.singleton p (HashMap.singleton (Just f) (HashSet.singleton fm)))
+    go fm@(AClause xs (Atom (App (Sym p) _)) body) =
+      ClauseSet mempty (HashMap.singleton p (HashMap.singleton Nothing (HashSet.singleton fm)))
+    go (AClause _ _ _) = error "Clause is not well-formed!"
+    go (Conj fs) = foldMap go fs
+    go (Exists _ _) = error "Unexpected top-level existential!"
+
+-- | Lookup clauses matching the given head specification.
+lookupClauses :: String -> Maybe String -> ClauseSet -> [Formula]
+lookupClauses "false" _ cs = HashSet.toList (goals cs)
+lookupClauses p Nothing cs =
+  case HashMap.lookup p (automaton cs) of
+    Nothing -> []
+    Just m -> HashSet.toList (fold m)
+lookupClauses p (Just f) cs =
+  case HashMap.lookup p (automaton cs) >>= HashMap.lookup (Just f) of
+    Nothing -> []
+    Just m -> HashSet.toList m
 
 -- * Hash Combinators
 

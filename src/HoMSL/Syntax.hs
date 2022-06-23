@@ -2,12 +2,18 @@
 
 -- | The syntax of terms and formula.
 module HoMSL.Syntax
-  ( -- * Identifiers
+  ( -- * Sorts
+    Sort (..),
+    sortArgs,
+    isPredicate,
+    
+    -- * Identifiers
     Id (..),
 
     -- * Terms
     Term (..),
     pattern Apps,
+    funSymbol,
 
     -- * Formulas
     Formula,
@@ -17,12 +23,11 @@ module HoMSL.Syntax
     pattern Clause,
     pattern Exists,
     pattern AClause,
-    groupByHead,
 
-    -- * Sorts
-    Sort (..),
-    sortArgs,
-    isPredicate,
+    -- * Clause Set
+    ClauseSet (..),
+    groupByHead,
+    lookupClauses,
 
     -- * Scope
     IdEnv.Scope,
