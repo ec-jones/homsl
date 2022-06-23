@@ -9,13 +9,15 @@ import Control.Monad.State
 import Data.Char
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import qualified Data.List as List
 import qualified Data.IntMap as IntMap
+import qualified Data.List as List
 import Data.STRef
-import HoMSL.Syntax
 import HoMSL.Rewrite
+import HoMSL.Syntax
 import Text.Parsec
 import Text.Parsec.Token
+
+-- TODO: Split up into modules
 
 -- * HoRS Syntax
 
@@ -42,9 +44,12 @@ horsToHoMSL str =
     Right (rules, trans) ->
       let env = inferSorts (rules, trans)
           qs = HashMap.keys $ HashMap.filter isPredicate env
-       in saturate $ groupByHead (mkGoal : 
-              map (mkTransitionClause env) trans ++
-            concatMap (mkRuleClauses qs env) rules)
+       in saturate $
+            groupByHead
+              ( mkGoal
+                  : map (mkTransitionClause env) trans
+                  ++ concatMap (mkRuleClauses qs env) rules
+              )
 
 lexer :: GenTokenParser String u (Reader (HashSet.HashSet String))
 lexer =
@@ -291,7 +296,7 @@ mkTransitionClause env (Transition q f rhs) =
 
 -- | Make clauses for each state and production rule.
 mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> [Formula]
-mkRuleClauses qs env (Rule f xs rhs) = 
+mkRuleClauses qs env (Rule f xs rhs) =
   case HashMap.lookup f env of
     Nothing -> error "State not in scope!"
     Just s -> do
@@ -301,7 +306,7 @@ mkRuleClauses qs env (Rule f xs rhs) =
           rho x =
             case List.elemIndex x xs of
               Nothing -> error "Unbound variable in production rul!"
-              Just i -> xs' !! i 
+              Just i -> xs' !! i
           head = Atom (App (Sym q) (Apps (Sym f) (map Var xs')))
           body = Atom (App (Sym q) (fmap rho rhs))
       pure (Clause xs' head body)

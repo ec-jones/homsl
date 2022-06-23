@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -243,18 +244,19 @@ viewAClause (Clause xs head body) = Just (xs, head, body)
 viewAClause nonClause = Nothing
 
 -- | A collection of clauses grouped by head symbols.
-data ClauseSet = 
-  ClauseSet {
-    goals :: HashSet.HashSet Formula,
-    automaton :: HashMap.HashMap String (HashMap.HashMap (Maybe String) (HashSet.HashSet Formula))
+data ClauseSet = ClauseSet
+  { goals :: HashSet.HashSet Formula,
+    definite :: HashMap.HashMap String (HashMap.HashMap (Maybe String) (HashSet.HashSet Formula))
   }
+  deriving stock (Show)
 
 instance Semigroup ClauseSet where
-  cs1 <> cs2 = ClauseSet {
-    goals = goals cs1 <> goals cs2,
-    automaton =
-      HashMap.unionWith (<>) (automaton cs1) (automaton cs2)
-  }
+  cs1 <> cs2 =
+    ClauseSet
+      { goals = goals cs1 <> goals cs2,
+        definite =
+          HashMap.unionWith (HashMap.unionWith (<>)) (definite cs1) (definite cs2)
+      }
 
 instance Monoid ClauseSet where
   mempty = ClauseSet mempty mempty
@@ -278,11 +280,11 @@ groupByHead = foldMap go
 lookupClauses :: String -> Maybe String -> ClauseSet -> [Formula]
 lookupClauses "false" _ cs = HashSet.toList (goals cs)
 lookupClauses p Nothing cs =
-  case HashMap.lookup p (automaton cs) of
+  case HashMap.lookup p (definite cs) of
     Nothing -> []
     Just m -> HashSet.toList (fold m)
 lookupClauses p (Just f) cs =
-  case HashMap.lookup p (automaton cs) >>= HashMap.lookup (Just f) of
+  case HashMap.lookup p (definite cs) >>= HashMap.lookup (Just f) of
     Nothing -> []
     Just m -> HashSet.toList m
 

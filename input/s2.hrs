@@ -1,0 +1,21 @@
+%BEGING
+S = br (if (Not (L1 (L1 true))) err ok) (if (Not (L1 (L1 false))) err ok).
+Not b = if b false true.
+Or b1 b2 = if b1 true b2.
+Bits a b c g = if (Or (Not a) (Or (Not b) (Not c))) (if (Not a) (Bits true b c g) (if (Not b) (Bits false true c g) (Bits false false true g))) g.
+L1 g = Not (if g (Bits false false false g) (L2 (L2 g))).
+L2 g = Not (if g (Bits false false false g) g).
+%ENDG
+
+%BEGINA
+q0 ok -> .
+q0 if -> (1, qt) (2, q0).
+q0 if -> (1, qf) (3, q0).
+qt if -> (1, qt) (2, qt).
+qt if -> (1, qf) (3, qt).
+qf if -> (1, qt) (2, qf).
+qf if -> (1, qf) (3, qf).
+qt true -> .
+qf false -> .
+q0 br -> q0 q0.
+%ENDA

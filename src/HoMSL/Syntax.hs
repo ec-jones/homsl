@@ -6,7 +6,7 @@ module HoMSL.Syntax
     Sort (..),
     sortArgs,
     isPredicate,
-    
+
     -- * Identifiers
     Id (..),
 
