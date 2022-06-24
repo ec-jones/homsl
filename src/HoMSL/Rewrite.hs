@@ -1,48 +1,87 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module HoMSL.Rewrite where
+module HoMSL.Rewrite
+  ( ClauseSet,
+    tableClauses,
+    satisfiable,
+  )
+where
 
 import Control.Monad.Memoization
+import qualified Control.Monad.Memoization as Table
 import Control.Monad.ST
 import Control.Monad.State
 import Data.Foldable
-import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.HashSet as HashSet
 import qualified Data.List as List
+import Debug.Trace
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax
-import Debug.Trace
 
--- TODO: Merge rewrite procedures
+-- TODO: Trace mode.
 
--- | Produce automaton clauses with the given head.
-saturate :: ClauseSet -> [Formula]
-saturate clauses = runST $ mdo
-  table <- memo $ \(p, f) -> do
-    clause@(AClause xs head body) <- msum [ pure clause | clause <- lookupClauses p f clauses ]
-    traceM ("Rewriting: " ++ show clause)
+-- | Clauses grouped by head symbol.
+type ClauseSet =
+  Table (String, Maybe String) Formula
+
+-- | Create a clause set from a list of formulas.
+tableClauses :: [Formula] -> ClauseSet
+tableClauses = foldl' go mempty
+  where
+    go :: ClauseSet -> Formula -> ClauseSet
+    go cs (Conj fs) = foldl' go cs fs
+    go cs fm@(Clause xs Ff body) =
+      Table.insert ("false", Nothing) fm cs
+    go cs fm@(Clause xs (Atom (App (Sym p) (Apps (Sym f) _))) body) =
+      Table.insert (p, Just f) fm cs
+    go cs fm@(Clause xs (Atom (App (Sym p) _)) body) =
+      Table.insert (p, Nothing) fm cs
+    go cs fm =
+      go cs (Clause [] fm (Conj []))
+
+-- | Rewrite the body goal clauses, deriving automaton clauses in the process.
+satisfiable :: ClauseSet -> (Bool, ClauseSet)
+satisfiable clauses = runST $ mdo
+  (getTable, loop) <- memo $ \(p, f) -> do
+    -- Select a clause with the given head.
+    (xs, head, body) <- msum [pure (viewClause clause) | clause <- Table.lookup (p, f) clauses]
+    traceM ("Rewriting: " ++ show (Clause xs head body))
+
+    -- Rewrite the body using the recursively constructed table.
     let scope = IdEnv.fromList [(x, (x, False)) | x <- xs]
-    (body', (_, subst)) <- runStateT (rewrite table body) (scope, mempty)
+    (body', (_, subst)) <- runStateT (rewrite False loop body) (scope, mempty)
+
+    -- There should be no existentials in the top-level.
     unless (IdEnv.null (substMap subst)) $
       error "Uncaught existential variable!"
+
     pure (Clause xs head body')
-  runMemo (table ("false", Nothing))
+
+  -- Attempt to rewrite any goal clauses.
+  res <- runMemo (loop ("false", Nothing))
+
+  -- Gather all clauses produced in rewriting goals.
+  table <- getTable
+  pure (null res, table)
 
 -- | Non-determinstically rewrite a goal formula into automaton form using the table.
+-- The first parameter indicates if the formula is to appear as the head of a nested clause.
 rewrite ::
+  Bool ->
   ((String, Maybe String) -> Memo Formula s Formula) ->
   Formula ->
   StateT (IdEnv.IdEnv (Id, Bool), Subst) (Memo Formula s) Formula
-rewrite table Ff = pure Ff
-rewrite table (Atom tm@(App (Sym p) arg)) = do
+rewrite nested table Ff = pure Ff
+rewrite nested table (Atom tm@(App (Sym p) arg)) = do
   (vars, theta) <- get
   case subst theta arg of
     Apps (Var y) ss
       | any (deepOrExistential vars) ss,
         not (existential vars y) -> do
           -- (Assm)
-          selected@(AClause ys (Atom head) body) <- lift $ table (p, funSymbol arg)
+          selected@(viewClause -> (ys, head, body)) <-
+            lift $ table (p, funSymbol arg)
           let (ys', xs) = List.splitAt (length ys - length ss) ys
           guard
             ( length ys >= length ss
@@ -55,99 +94,56 @@ rewrite table (Atom tm@(App (Sym p) arg)) = do
               body' = restrictBody xs' (subst rho body)
               head' = App (Sym p) (Apps (Var y) (map Var xs'))
 
-          rewrite table $
+          rewrite nested table $
             Conj
               [ subst inst body',
                 Clause xs' (Atom head') body'
               ]
+      | nested,
+        not (null ss),
+        not (existential vars y) ->
+          pure (Atom (App (Sym p) arg))
     nonHo
-      | deepOrExistential vars arg -> do
+      | nested || deepOrExistential vars arg -> do
           -- (ExInst) and (Step/Refl)
-          clause@(AClause xs (Atom head) body) <- lift $ table (p, funSymbol arg)
+          clause@(viewClause -> (xs, Atom head, body)) <-
+            lift $ table (p, funSymbol arg)
           inst <- match xs head tm
-          rewrite table (subst inst body)
+          rewrite nested table (subst inst body)
       | otherwise -> pure (Atom (App (Sym p) nonHo))
-rewrite table (Atom _) = error "Term is not a valid atom!"
-rewrite table (Conj fs) =
-  Conj <$> mapM (rewrite table) fs
-rewrite table (Exists x body) = do
+rewrite nested table (Atom _) = error "Term is not a valid atom!"
+rewrite nested table (Conj fs) =
+  Conj <$> mapM (rewrite nested table) fs
+rewrite nested table (Exists x body) = do
   (vars, theta) <- get
   put (IdEnv.insert x (x, True) vars, theta)
-  body' <- rewrite table body
+  body' <- rewrite nested table body
   (vars', theta') <- get
   put (IdEnv.delete x vars', deleteSubst [x] theta')
   pure body'
-rewrite table (Clause xs head body)
+rewrite nested table (Clause xs head body)
   | all (`notElem` xs) (freeVars head) =
       -- (Scope1)
       pure head
   | otherwise = do
-      let clauses = groupByHead [body]
-          -- Locally extend table with clauses in the body.
-          table' (p, f) =
+      -- Locally extend table with clauses in the body.
+      let table' (p, f) =
             table (p, f)
               <|> msum
                 [ pure clause
-                  | clause <- lookupClauses p f clauses
+                  | clause <- Table.lookup (p, f) (tableClauses [body])
                 ]
       (vars, theta) <- get
       put
         ( IdEnv.fromList [(x, (x, False)) | x <- xs] <> vars,
           deleteSubst xs theta
         )
-      head' <- rewriteHead table' head
+      head' <- rewrite True table' head
       (vars', theta') <- get
       put (IdEnv.deleteMany xs vars', theta')
       if head == head'
         then pure (Clause xs head' body)
-        else rewrite table (Clause xs head' body)
-
--- | Non-determinstically rewrite the head of a nest clause.
-rewriteHead ::
-  ((String, Maybe String) -> Memo Formula s Formula) ->
-  Formula ->
-  StateT (IdEnv.IdEnv (Id, Bool), Subst) (Memo Formula s) Formula
-rewriteHead table (Atom tm@(App (Sym p) arg)) = do
-  (vars, theta) <- get
-  case subst theta arg of
-    arg@(Apps (Var y) ss)
-      | any (deepOrExistential vars) ss,
-        not (existential vars y) -> do
-          -- (Assm)
-          selected@(AClause ys (Atom head) body) <- lift $ table (p, Nothing)
-          let (ys', xs) = List.splitAt (length ys - length ss) ys
-          guard
-            ( length ys >= length ss
-                && sortArgs (idSort y) == fmap idSort xs
-            )
-
-          let (_, xs') = uniqAways (fmap fst vars) xs
-              rho = mkRenaming (zip xs xs')
-              inst = mkSubst (zip xs' ss)
-              body' = restrictBody xs' (subst rho body)
-              head' = App (Sym p) (Apps (Var y) (map Var xs'))
-
-          rewrite table $
-            Conj
-              [ subst inst body',
-                Clause xs' (Atom head') body'
-              ]
-      | not (null ss),
-        not (existential vars y) ->
-          pure (Atom (App (Sym p) arg))
-    noHo -> do
-      -- (ExInst) and (Step/Refl)
-      clause@(AClause xs (Atom head) body) <- lift $ table (p, funSymbol arg)
-      inst <- match xs head tm
-      rewrite table (subst inst body)
-rewriteHead table (Exists x body) = do
-  (vars, theta) <- get
-  put (IdEnv.insert x (x, True) vars, theta)
-  body' <- rewriteHead table body
-  (vars, theta) <- get
-  put (IdEnv.delete x vars, deleteSubst [x] theta)
-  pure body'
-rewriteHead _ _ = error "Unexpected head of nested clause!"
+        else rewrite nested table (Clause xs head' body)
 
 -- | @matchHead xs head tm@ finds instance of head that instantitates xs.
 -- It may also instantiate existential variables from tm.

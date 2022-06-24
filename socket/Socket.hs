@@ -31,11 +31,11 @@ where
 import qualified Control.Monad.RWS as RWS
 import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
-import GHC.IO.Handle
 import HoMSL.Rewrite
 import HoMSL.Syntax
 import HoMSL.Syntax.Parser
-import System.IO
+
+-- TODO: conver to HoRS first?
 
 -- * Socket Interface
 
@@ -313,7 +313,7 @@ states =
 
 -- * Testing
 
-server :: Socket soc => SocketM soc ()
+server :: SocketM soc ()
 server = do
   soc <- socket
   bind soc 0000
@@ -328,6 +328,6 @@ test :: IO ()
 test = do
   automaton <- parseProgram <$> readFile "input/socket"
   let prog = getClauses server
-      clauses = saturate (groupByHead (prog ++ automaton))
+      (_, clauses) = satisfiable (tableClauses (prog ++ automaton))
   RWS.forM_ clauses $ \clause ->
     print clause

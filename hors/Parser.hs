@@ -17,6 +17,8 @@ import HoMSL.Syntax
 import Text.Parsec
 import Text.Parsec.Token
 
+-- TODO: Build clause set incrementally.
+-- TODO: Accumulate states.
 -- TODO: Split up into modules
 
 -- * HoRS Syntax
@@ -37,15 +39,15 @@ data Rule
 -- * Parsing
 
 -- | Parse a combined HoRS problem.
-horsToHoMSL :: String -> [Formula]
+horsToHoMSL :: String -> (Bool, ClauseSet)
 horsToHoMSL str =
   case runReader (runParserT (pHoRS <* eof) () "" str) mempty of
     Left err -> error (show err)
     Right (rules, trans) ->
       let env = inferSorts (rules, trans)
           qs = HashMap.keys $ HashMap.filter isPredicate env
-       in saturate $
-            groupByHead
+       in satisfiable $
+            tableClauses
               ( mkGoal
                   : map (mkTransitionClause env) trans
                   ++ concatMap (mkRuleClauses qs env) rules

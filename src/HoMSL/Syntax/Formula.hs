@@ -2,7 +2,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- | Logical formulas and clause sets.
+-- | Logical formulas.
 module HoMSL.Syntax.Formula
   ( -- * Formulas,
     Formula,
@@ -11,17 +11,11 @@ module HoMSL.Syntax.Formula
     pattern Conj,
     pattern Exists,
     pattern Clause,
-    pattern AClause,
-
-    -- * Clause Set
-    ClauseSet (..),
-    groupByHead,
-    lookupClauses,
+    viewClause
   )
 where
 
 import Data.Foldable
-import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Hashable
 import qualified Data.List as List
@@ -134,8 +128,6 @@ instance IdEnv.FreeVars Formula where
 
 {-# COMPLETE Ff, Atom, Conj, Clause, Exists #-}
 
-{-# COMPLETE AClause, Conj, Exists #-}
-
 -- | False.
 pattern Ff :: Formula
 pattern Ff <-
@@ -232,61 +224,10 @@ pattern Exists x body <-
             }
       | otherwise = body
 
--- | An automaton headed clause.
--- This pattern does not inspect the body, but will match Ff and Atom.
-pattern AClause :: [Id] -> Formula -> Formula -> Formula
-pattern AClause xs head body <- (viewAClause -> Just (xs, head, body))
-
-viewAClause :: Formula -> Maybe ([Id], Formula, Formula)
-viewAClause Ff = Just ([], Conj [], Ff)
-viewAClause (Atom tm) = Just ([], Conj [], Atom tm)
-viewAClause (Clause xs head body) = Just (xs, head, body)
-viewAClause nonClause = Nothing
-
--- | A collection of clauses grouped by head symbols.
-data ClauseSet = ClauseSet
-  { goals :: HashSet.HashSet Formula,
-    definite :: HashMap.HashMap String (HashMap.HashMap (Maybe String) (HashSet.HashSet Formula))
-  }
-  deriving stock (Show)
-
-instance Semigroup ClauseSet where
-  cs1 <> cs2 =
-    ClauseSet
-      { goals = goals cs1 <> goals cs2,
-        definite =
-          HashMap.unionWith (HashMap.unionWith (<>)) (definite cs1) (definite cs2)
-      }
-
-instance Monoid ClauseSet where
-  mempty = ClauseSet mempty mempty
-
--- | Group a list of clauses by head symbol.
-groupByHead :: [Formula] -> ClauseSet
-groupByHead = foldMap go
-  where
-    go :: Formula -> ClauseSet
-    go fm@(AClause xs Ff body) =
-      ClauseSet (HashSet.singleton fm) mempty
-    go fm@(AClause xs (Atom (App (Sym p) (Apps (Sym f) _))) body) =
-      ClauseSet mempty (HashMap.singleton p (HashMap.singleton (Just f) (HashSet.singleton fm)))
-    go fm@(AClause xs (Atom (App (Sym p) _)) body) =
-      ClauseSet mempty (HashMap.singleton p (HashMap.singleton Nothing (HashSet.singleton fm)))
-    go (AClause _ _ _) = error "Clause is not well-formed!"
-    go (Conj fs) = foldMap go fs
-    go (Exists _ _) = error "Unexpected top-level existential!"
-
--- | Lookup clauses matching the given head specification.
-lookupClauses :: String -> Maybe String -> ClauseSet -> [Formula]
-lookupClauses "false" _ cs = HashSet.toList (goals cs)
-lookupClauses p Nothing cs =
-  case HashMap.lookup p (definite cs) of
-    Nothing -> []
-    Just m -> HashSet.toList (fold m)
-lookupClauses p (Just f) cs =
-  case HashMap.lookup p (definite cs) >>= HashMap.lookup (Just f) of
-    Nothing -> []
-    Just m -> HashSet.toList m
+-- | Treat an arbitary formula as a clause.
+viewClause :: Formula -> ([Id], Formula, Formula)
+viewClause (Clause xs head body) = (xs, head, body)
+viewClause nonClause = ([], nonClause, Conj [])
 
 -- * Hash Combinators
 
@@ -300,7 +241,14 @@ shift xs env =
     (\env' (x, i) -> IdEnv.insert x i env')
     (fmap (+ length xs) env)
     (zip xs [0 ..])
+    
+hashFf :: HashFun
+hashFf _ = hash "Ff"
 
+hashAtom :: HashFun -> HashFun
+hashAtom t env =
+  hash ("Atom", t env)
+  
 hashTerm :: Term Id -> HashFun
 hashTerm (Var x) env =
   case IdEnv.lookup x env of
@@ -309,13 +257,6 @@ hashTerm (Var x) env =
 hashTerm (Sym f) env = hash ("Sym", f)
 hashTerm (App fun arg) env =
   hash ("App", hashTerm fun env, hashTerm arg env)
-
-hashFf :: HashFun
-hashFf _ = hash "Ff"
-
-hashAtom :: HashFun -> HashFun
-hashAtom t env =
-  hash ("Atom", t env)
 
 hashConj :: [HashFun] -> HashFun
 hashConj fs env =

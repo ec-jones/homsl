@@ -20,6 +20,7 @@ module HoMSL.Syntax.Term
   )
 where
 
+import Data.Hashable
 import Data.Foldable
 
 -- * Identifiers
@@ -37,6 +38,10 @@ data Id = Id
 instance Eq Id where
   x == y =
     idUnique x == idUnique y
+
+instance Hashable Id where
+  hashWithSalt s x =
+    hashWithSalt s (idUnique x)
 
 instance Show Id where
   showsPrec _ x =

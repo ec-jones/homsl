@@ -22,12 +22,7 @@ module HoMSL.Syntax
     pattern Conj,
     pattern Clause,
     pattern Exists,
-    pattern AClause,
-
-    -- * Clause Set
-    ClauseSet (..),
-    groupByHead,
-    lookupClauses,
+    viewClause,
 
     -- * Scope
     IdEnv.Scope,
