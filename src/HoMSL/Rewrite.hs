@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -18,8 +19,6 @@ import qualified Data.List as List
 import Debug.Trace
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax
-
--- TODO: Trace mode.
 
 -- | Clauses grouped by head symbol.
 type ClauseSet =
@@ -46,7 +45,9 @@ satisfiable clauses = runST $ mdo
   (getTable, loop) <- memo $ \(p, f) -> do
     -- Select a clause with the given head.
     (xs, head, body) <- msum [pure (viewClause clause) | clause <- Table.lookup (p, f) clauses]
+#ifdef trace
     traceM ("Rewriting: " ++ show (Clause xs head body))
+#endif
 
     -- Rewrite the body using the recursively constructed table.
     let scope = IdEnv.fromList [(x, (x, False)) | x <- xs]
@@ -56,6 +57,9 @@ satisfiable clauses = runST $ mdo
     unless (IdEnv.null (substMap subst)) $
       error "Uncaught existential variable!"
 
+#ifdef trace
+    traceM ("Result: " ++ show (Clause xs head body'))
+#endif
     pure (Clause xs head body')
 
   -- Attempt to rewrite any goal clauses.
@@ -80,13 +84,16 @@ rewrite nested table (Atom tm@(App (Sym p) arg)) = do
       | any (deepOrExistential vars) ss,
         not (existential vars y) -> do
           -- (Assm)
-          selected@(viewClause -> (ys, head, body)) <-
+          clause@(viewClause -> (ys, head, body)) <-
             lift $ table (p, funSymbol arg)
           let (ys', xs) = List.splitAt (length ys - length ss) ys
           guard
             ( length ys >= length ss
                 && sortArgs (idSort y) == fmap idSort xs
             )
+#ifdef trace
+          traceM ("Selected: " ++ show clause)
+#endif
 
           let (_, xs') = uniqAways (fmap fst vars) xs
               rho = mkRenaming (zip xs xs')
@@ -109,6 +116,9 @@ rewrite nested table (Atom tm@(App (Sym p) arg)) = do
           clause@(viewClause -> (xs, Atom head, body)) <-
             lift $ table (p, funSymbol arg)
           inst <- match xs head tm
+#ifdef trace
+          traceM ("Selected: " ++ show clause)
+#endif
           rewrite nested table (subst inst body)
       | otherwise -> pure (Atom (App (Sym p) nonHo))
 rewrite nested table (Atom _) = error "Term is not a valid atom!"
