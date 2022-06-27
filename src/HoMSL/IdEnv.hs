@@ -34,6 +34,7 @@ import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import Data.Traversable
 import HoMSL.Syntax.Term
+import Control.DeepSeq
 import Prelude hiding (lookup, null)
 
 -- * Environment
@@ -41,7 +42,8 @@ import Prelude hiding (lookup, null)
 -- | Finite map from identifiers.
 newtype IdEnv a
   = IdEnv (IntMap.IntMap a)
-  deriving newtype (Functor, Foldable, Semigroup, Monoid)
+  deriving newtype (Functor, 
+      Foldable, Semigroup, Monoid, NFData)
 
 -- | The empty environment.
 empty :: IdEnv a
@@ -160,6 +162,7 @@ class FreeVars a where
   -- | Apply a substitution.
   subst :: Subst -> a -> a
 
+-- TODO: Make use of functor/foldable structure
 instance FreeVars (Term Id) where
   freeVars (Var x) = fromList [(x, x)]
   freeVars (Sym f) = mempty

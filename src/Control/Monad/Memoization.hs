@@ -1,20 +1,15 @@
-{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- | Memoization of left-recursive non-deterministic functions.
 module Control.Monad.Memoization
-  ( -- * Memoization tables
-    Table,
-    insert,
-    lookup,
-
-    -- * Memoization Monad
+  ( -- * Memoization Monad
     Memo,
     runMemo,
     memo,
 
-    -- * Reexports
+    -- * Reexport
     Alternative (..),
   )
 where
@@ -29,45 +24,6 @@ import Data.Hashable
 import Data.Maybe
 import Data.STRef
 import Debug.Trace
-import Prelude hiding (lookup)
-
--- * Memoization tables
-
--- | A table of results.
-newtype Table a b
-  = Table (HashMap.HashMap a (HashSet.HashSet b))
-  deriving stock (Foldable)
-
-instance (Hashable a, Hashable b) => Semigroup (Table a b) where
-  Table xs <> Table ys =
-    Table (HashMap.unionWith HashSet.union xs ys)
-
-instance (Hashable a, Hashable b) => Monoid (Table a b) where
-  mempty = Table HashMap.empty
-
-instance (Show a, Show b) => Show (Table a b) where
-  show (Table xs) =
-    unlines
-      [ show x ++ " -> " ++ show y
-        | (x, ys) <- HashMap.toList xs,
-          y <- HashSet.toList ys
-      ]
-
--- | Make a table from the internal value.
-mkTable :: HashMap.HashMap a (HashSet.HashSet b, c) -> Table a b
-mkTable = Table . fmap fst
-
--- | Insert a value into a table.
-insert :: (Hashable a, Hashable b) => a -> b -> Table a b -> Table a b
-insert x y (Table xs) =
-  Table (HashMap.alter (Just . HashSet.insert y . fromMaybe HashSet.empty) x xs)
-
--- | Lookup values from the table.
-lookup :: Hashable a => a -> Table a b -> [b]
-lookup x (Table xs) =
-  case HashMap.lookup x xs of
-    Nothing -> []
-    Just ys -> HashSet.toList ys
 
 -- * Memoization monad.
 
@@ -106,21 +62,29 @@ liftST = Memo . lift
 
 -- | Memoize a non-deterministic function.
 memo ::
+#ifdef trace
   (Show a, Show b, Hashable a, Hashable b) =>
+#else
+  (Hashable a, Hashable b) =>
+#endif
   (a -> Memo b s b) ->
-  ST s (ST s (Table a b), a -> Memo b s b)
+  ST s (ST s (HashMap.HashMap a (HashSet.HashSet b)), a -> Memo b s b)
 memo f = do
   ref <- newSTRef HashMap.empty
   pure
-    ( mkTable <$> readSTRef ref,
+    ( fmap fst <$> readSTRef ref,
       \x ->
         callCC $ \k -> do
           table <- liftST $ readSTRef ref
           let update e = liftST . writeSTRef ref . HashMap.insert x e
           case HashMap.lookup x table of
             Nothing -> do
-              -- Producer
+              -- Producer Node
+
+#ifdef trace
               traceM ("Producer: " ++ show x)
+#endif
+
               update (HashSet.empty, [k]) table
               y <- f x
               table' <- liftST $ readSTRef ref
@@ -129,12 +93,18 @@ memo f = do
                 Just (ys, ks)
                   | y `HashSet.member` ys -> mzero
                   | otherwise -> do
+#ifdef trace
                       traceM ("Produce: " ++ show (x, y))
+#endif
                       update (HashSet.insert y ys, ks) table'
                       msum [k' y | k' <- ks]
             Just (ys, ks) -> do
-              -- Consumer
+              -- Consumer Node
+
+#ifdef trace
               traceM ("Consume: " ++ show x)
+#endif
+
               update (ys, k : ks) table
               msum [k y | y <- HashSet.toList ys]
     )

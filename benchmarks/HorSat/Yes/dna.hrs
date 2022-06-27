@@ -1,0 +1,120 @@
+%BEGING
+S =  X119 (X45 (X116 (X80 (X119 (X80 (X64 (X41 (X75 a)) (a (g
+(X111 a (c (X75 g (X79 (t (X68 c (X20 (X19 (c (X112 (X44 (X99
+c (X66 (g (X89 (g (X20 (X61 (t (X79 (a (X43 (X86 (X24 a (X78
+(X105 t (X42 (X95 t (X37 (X78 (g (X112 (a (X85 (X18 (X105 a
+(X65 (X117 (X114 (t (X78 (X36 (X35 (X108 a (X33 (t (X30 (X64
+c (X92 t (g (X60 (X15 (X102 a (X20 (g (t (X54 (X19 (X88 (g
+(X13 (X117 (X48 t (X95 c (X16 (X18 (X65 (X108 c (X42 (t (X77
+(X12 (X83 t (g (X43 (g (X37 (X16 (g (g (X36 (c (X43 (a (X77
+(X6 (X87 (X60 (X44 (X111 c (X83 c (t (t (X86 (X36 (X15 (X87
+(t (X99 a (g (X102 c
+e))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))).
+X4 x1 x2 x3 = x1 (x2 x3).
+X5 x y = X4 t x y.
+X6 x = X5 a x.
+X10 x7 x8 x9 = x8 (x7 x9).
+X11 x y = X10 t x y.
+X12 x = X11 c x.
+X13 x = X5 g x.
+X14 x y = X10 c x y.
+X15 x = X14 g x.
+X16 x = X14 a x.
+X17 x y =  X4 a x y.
+X18 x =  X17 t x.
+X19 x =  X17 a x.
+X20 x =  X5 c x.
+X21 x y =  X4 c x y.
+X24 x22 x23 =  g (x22 (x22 x23)).
+X28 x25 x26 x27 =  x25 (x26 (x25 x27)).
+X29 x y =  X10 X13 x y.
+X30 x =  X28 t c x.
+X31 x y =  X28 c x y.
+X32 x =  X31 c x.
+X33 x =  X29 c x.
+X34 x y =  X4 X16 x y.
+X35 x =  X34 c x.
+X36 x =  X29 a x.
+X37 x =  X31 a x.
+X40 x38 x39 =  x38 (x38 (a x39)).
+X41 x y =  X10 X16 x y.
+X42 x =  X34 t x.
+X43 x =  X41 t x.
+X44 x =  X40 t x.
+X45 x =  X40 c x.
+X48 x46 x47 =  c (x46 (x46 (X6 x47))).
+X52 x49 x50 x51 =  x49 (x49 (a (x50 x51))).
+X53 x y =  X52 a x y.
+X54 x =  X53 t x.
+X55 x y =  X10 X45 x y.
+X56 x =  X55 a x.
+X59 x57 x58 =  x57 (c (X20 x58)).
+X60 x =  X53 c x.
+X61 x =  X52 c t x.
+X64 x62 x63 =  t (x62 (X43 (x62 x63))).
+X65 x =  X55 g x.
+X66 x =  X59 a x.
+X68 x67 y =  X24 (X5 x67) y.
+X72 x69 x70 x71 =  x69 (x70 (X16 (x69 x71))).
+X75 x73 x74 =  c (X12 (x73 (x73 (c x74)))).
+X76 x y =  X72 c x y.
+X77 x =  X68 a x.
+X78 x =  X76 c x.
+X79 x =  X76 a x.
+X80 x =  X72 a c x.
+X83 x81 x82 =  g (X18 (t (x81 (x81 (X16 x82))))).
+X85 x84 =  X44 (X32 x84).
+X86 x =  X31 X66 x.
+X87 x =  X59 X61 x.
+X88 x =  X31 X80 x.
+X89 x =  X11 X85 x.
+X92 x90 x91 =  c (X56 (x90 (a (x90 (x90 x91))))).
+X95 x93 x94 =  X43 (x93 (X56 (c (x93 x94)))).
+X99 x96 x98 =  X21 x96 (X33 (x96 (x96 (t (X21 x96 x98))))).
+X102 x100 x101 = X6 (x100 (c (X54 (g (x100 x101))))).
+X105 x103 x104 = X18 (X45 (x103 (X32 (x103 (X12 x104))))).
+X108 x106 x107 = t (X66 (X35 (x106 (t (x106 x107))))).
+X111 x109 x110 =  X48 c (x109 (X30 (x109 (a x110)))).
+X112 x =  X55 X89 x.
+X114 x113 =  X89 (X56 x113).
+X116 x115 =  c (a (X92 c x115)).
+X117 x =  X21 X114 x.
+X119 x118 = c (X116 (X88 x118)).
+%ENDG
+
+%BEGINA
+q0 a -> q1.
+q0 c -> q0.
+q0 t -> q0.
+q0 g -> q0.
+q1 a -> q1.
+q1 c -> q2.
+q1 t -> q0.
+q1 g -> q0.
+q2 a -> q1.
+q2 c -> q0.
+q2 t -> q3.
+q2 g -> q0.
+q3 a -> q1.
+q3 c -> q0.
+q3 t -> q0.
+q3 g -> q4.
+q4 a -> q5.
+q4 c -> q0.
+q4 t -> q0.
+q4 g -> q0.
+q5 a -> q1.
+q5 c -> q6.
+q5 t -> q0.
+q5 g -> q0.
+q6 a -> q6.
+q6 c -> q6.
+q6 t -> q6.
+q6 g -> q6.
+q0 e -> .
+q1 e -> .
+q2 e -> .
+q3 e -> .
+q4 e -> .
+q5 e -> .
+%ENDA

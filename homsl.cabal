@@ -7,13 +7,15 @@ category:           Verification
 
 library
   exposed-modules:  HoMSL.Syntax,
-                    HoMSL.Syntax.Parser,
+                    HoMSL.ClauseSet,
                     HoMSL.Rewrite
 
   other-modules:    HoMSL.IdEnv,
                     HoMSL.Syntax.Term,
                     HoMSL.Syntax.Formula,
-                    Control.Monad.Memoization
+                    HoMSL.Syntax.Parser,
+
+                    Control.Monad.Memoization,
 
   hs-source-dirs:   src
 
@@ -23,7 +25,8 @@ library
                     hashable,
                     parsec,
                     containers,
-                    unordered-containers
+                    unordered-containers,
+                    deepseq
 
   ghc-options:      -Wall
                     -Wcompat
@@ -44,49 +47,20 @@ library
   
   default-language: Haskell2010
 
-library socket
-  exposed-modules:  Socket
+executable hors-interface
+  main-is:          Main.hs
 
-  hs-source-dirs:   socket
-
-  build-depends:    base,
-                    mtl,
-                    containers,
-                    selective,
-                    homsl
-
-  ghc-options:      -Wall
-                    -Wcompat
-                    -Widentities
-                    -Wincomplete-uni-patterns
-                    -Wincomplete-record-updates
-                    -Wredundant-constraints
-                    -Wmissing-export-lists
-                    -Wpartial-fields
-                    -Wmissing-deriving-strategies
-                    -Wunused-packages
-
-                    -Wno-unused-matches
-                    -Wno-name-shadowing
-                    -Wno-unused-local-binds
-  
-  default-language: Haskell2010
-
-
-library hors
-  exposed-modules:
-
-  other-modules:    Parser
-
-  hs-source-dirs:   hors
+  hs-source-dirs:   hors-interface
 
   build-depends:    base,
                     mtl,
                     containers,
                     unordered-containers,
-                    parsec,
-                    unification-fd,
                     homsl,
+                    directory,
+                    parsec,
+                    criterion,
+                    deepseq
 
   ghc-options:      -Wall
                     -Wcompat

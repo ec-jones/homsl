@@ -4,47 +4,26 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module HoMSL.Rewrite
-  ( ClauseSet,
-    tableClauses,
-    satisfiable,
+  ( satisfiable,
   )
 where
 
 import Control.Monad.Memoization
-import qualified Control.Monad.Memoization as Table
 import Control.Monad.ST
 import Control.Monad.State
 import Data.Foldable
 import qualified Data.List as List
 import Debug.Trace
 import qualified HoMSL.IdEnv as IdEnv
+import qualified HoMSL.ClauseSet as ClauseSet
 import HoMSL.Syntax
 
--- | Clauses grouped by head symbol.
-type ClauseSet =
-  Table (String, Maybe String) Formula
-
--- | Create a clause set from a list of formulas.
-tableClauses :: [Formula] -> ClauseSet
-tableClauses = foldl' go mempty
-  where
-    go :: ClauseSet -> Formula -> ClauseSet
-    go cs (Conj fs) = foldl' go cs fs
-    go cs fm@(Clause xs Ff body) =
-      Table.insert ("false", Nothing) fm cs
-    go cs fm@(Clause xs (Atom (App (Sym p) (Apps (Sym f) _))) body) =
-      Table.insert (p, Just f) fm cs
-    go cs fm@(Clause xs (Atom (App (Sym p) _)) body) =
-      Table.insert (p, Nothing) fm cs
-    go cs fm =
-      go cs (Clause [] fm (Conj []))
-
 -- | Rewrite the body goal clauses, deriving automaton clauses in the process.
-satisfiable :: ClauseSet -> (Bool, ClauseSet)
+satisfiable :: ClauseSet.ClauseSet -> (Bool, ClauseSet.ClauseSet)
 satisfiable clauses = runST $ mdo
   (getTable, loop) <- memo $ \(p, f) -> do
     -- Select a clause with the given head.
-    (xs, head, body) <- msum [pure (viewClause clause) | clause <- Table.lookup (p, f) clauses]
+    (xs, head, body) <- msum [pure (viewClause clause) | clause <- ClauseSet.lookup p f clauses]
 #ifdef trace
     traceM ("Rewriting: " ++ show (Clause xs head body))
 #endif
@@ -67,7 +46,7 @@ satisfiable clauses = runST $ mdo
 
   -- Gather all clauses produced in rewriting goals.
   table <- getTable
-  pure (null res, table)
+  pure (null res, ClauseSet.ClauseSet table)
 
 -- | Non-determinstically rewrite a goal formula into automaton form using the table.
 -- The first parameter indicates if the formula is to appear as the head of a nested clause.
@@ -141,7 +120,7 @@ rewrite nested table (Clause xs head body)
             table (p, f)
               <|> msum
                 [ pure clause
-                  | clause <- Table.lookup (p, f) (tableClauses [body])
+                  | clause <- ClauseSet.lookup p f (ClauseSet.fromList [body])
                 ]
       (vars, theta) <- get
       put

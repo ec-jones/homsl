@@ -1,0 +1,24 @@
+%BEGING 
+/* S(999) (the following encoding uses the binary representation 1111100111 of 999) */
+S = One(One(One(Zero(Zero(One(One (One (One Step)))))))) f e.
+Step g z = g(lpar(plus (H g (lpar (minus (H g z)))))).
+Zero h g z = h(h(g)) z.
+One h g z = h(h(Step g)) z.
+H g z = g (rpar (g z)).
+%ENDG
+
+%BEGINA
+/* Contains no ff? */
+q0 f -> q1.
+q0 lpar -> q0.
+q0 rpar -> q0.
+q0 plus -> q0.
+q0 minus -> q0.
+q1 f -> q2.
+q1 lpar -> q0.
+q1 rpar -> q0.
+q1 plus -> q0.
+q1 minus -> q0.
+q0 e -> .
+q1 e -> .
+%ENDA

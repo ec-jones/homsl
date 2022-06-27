@@ -1,0 +1,28 @@
+%BEGING
+S = F b c.
+F f x = a (f x) (F f (f x)).
+%ENDG
+%BEGINA
+q0 a -> q0 q0.
+q0 b -> q1.
+q1 b -> q1.
+q0 c -> .
+q1 c -> .
+%ENDA
+
+/***
+S: q0  
+
+S: q0, F: top -> top -> q0   (Def of S)
+
+S: q0, F: (top ->q0) -> top -> q0 (Def of F)
+
+S: q0, F: (q1 ->q0) -> top -> q0  (Def of S)
+
+S: q0, F: (q1 ->q0) -> q1 -> q0  (Def of F)
+
+S: q0, F: (q1 ->q0)/\(top -> q1) -> q1 -> q0  (Def of F)
+
+S: q0, F: (q1 ->q0)/\(q1 -> q1) -> q1 -> q0  (Def of S)
+***/
+

@@ -1,4 +1,6 @@
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -20,6 +22,8 @@ module HoMSL.Syntax.Term
   )
 where
 
+import Control.DeepSeq
+import GHC.Generics
 import Data.Hashable
 import Data.Foldable
 
@@ -34,6 +38,8 @@ data Id = Id
     -- | A unique used to avoid capture.
     idUnique :: {-# UNPACK #-} !Int
   }
+  deriving stock Generic
+  deriving anyclass NFData
 
 instance Eq Id where
   x == y =
@@ -57,7 +63,8 @@ data Sort
     O
   | -- | Function arrow
     Sort :-> Sort
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Generic, Show)
+  deriving anyclass NFData
 
 infixr 0 :->
 
@@ -85,7 +92,8 @@ data Term a
     Sym String
   | -- | Application.
     App (Term a) (Term a)
-  deriving stock (Functor, Foldable, Traversable, Eq)
+  deriving stock (Functor, Foldable, Traversable, Generic, Eq)
+  deriving anyclass NFData
 
 instance Show a => Show (Term a) where
   showsPrec _ (Var x) = shows x

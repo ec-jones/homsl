@@ -1,5 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Logical formulas.
@@ -15,6 +17,8 @@ module HoMSL.Syntax.Formula
   )
 where
 
+import GHC.Generics
+import Control.DeepSeq
 import Data.Foldable
 import qualified Data.HashSet as HashSet
 import Data.Hashable
@@ -33,6 +37,8 @@ data Formula = Formula
     -- | Given de Buijn indicies hash the formula.
     formulaHash :: HashFun
   }
+  deriving stock Generic
+  deriving anyclass NFData
 
 -- | The underlying shape of formula.
 data FormulaShape
@@ -41,6 +47,8 @@ data FormulaShape
   | Conj_ (HashSet.HashSet Formula)
   | Clause_ [Id] Formula Formula
   | Exists_ Id Formula
+  deriving stock Generic
+  deriving anyclass NFData
 
 -- | Equality and hashing check for alpha equivalence.
 instance Eq Formula where

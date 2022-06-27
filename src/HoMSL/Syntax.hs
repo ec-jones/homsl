@@ -24,6 +24,9 @@ module HoMSL.Syntax
     pattern Exists,
     viewClause,
 
+    -- * Parser
+    parseProgram,
+
     -- * Scope
     IdEnv.Scope,
     IdEnv.mkScope,
@@ -43,3 +46,4 @@ where
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax.Formula
 import HoMSL.Syntax.Term
+import HoMSL.Syntax.Parser
