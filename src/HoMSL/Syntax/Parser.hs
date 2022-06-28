@@ -1,6 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
 
-module HoMSL.Syntax.Parser (parseProgram) where
+module HoMSL.Syntax.Parser (
+    parseProgram, parseFormula
+    ) where
 
 import Control.Monad.Reader
 import Data.Char
@@ -27,6 +29,12 @@ parseProgram str =
     Left err -> error (show err)
     Right fs -> fs
 
+parseFormula :: String -> Formula
+parseFormula str =
+  case runReader  ( runParserT pBody 0 "" str ) mempty of
+    Left err -> error (show err)
+    Right fs -> fs
+
 -- | Lexer for Haskell style tokens.
 lexer :: GenTokenParser String Int (Reader (HashMap.HashMap String Id))
 lexer =
@@ -41,7 +49,7 @@ lexer =
         opStart = oneOf "</;",
         opLetter = oneOf "<=/\\.;-",
         reservedOpNames = ["<=", "/\\", ".", ":", ";", "->"],
-        reservedNames = ["false", "i", "o"],
+        reservedNames = ["i", "o"],
         caseSensitive = True
       }
 
@@ -74,9 +82,7 @@ pClause = do
 
 -- | Parse the head of a clause.
 pHead :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
-pHead =
-  (Ff <$ reservedOp lexer "false")
-    <|> (Atom <$> pTerm)
+pHead = Atom <$> pTerm
 
 -- | Parse the body of a clause.
 pBody :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
@@ -85,8 +91,8 @@ pBody =
   where
     pAtom :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
     pAtom =
-      pClause
-        <|> Atom <$> pTerm
+      try (Atom <$> pTerm) <|>
+        pClause
 
 -- | Parse an applicative term.
 pTerm :: ParsecT String Int (Reader (HashMap.HashMap String Id)) (Term Id)

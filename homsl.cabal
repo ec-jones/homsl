@@ -42,8 +42,6 @@ library
                     -Wno-unused-matches
                     -Wno-name-shadowing
                     -Wno-unused-local-binds
-
-  -- cpp-options:      -D trace
   
   default-language: Haskell2010
 

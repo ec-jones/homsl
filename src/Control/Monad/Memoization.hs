@@ -21,7 +21,6 @@ import Control.Monad.ST
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Hashable
-import Data.Maybe
 import Data.STRef
 import Debug.Trace
 
@@ -49,7 +48,7 @@ instance MonadPlus (Memo r s) where
   mzero = Memo $ ContT $ \_ -> pure mzero
 
   Memo m `mplus` Memo m' = Memo $ ContT $ \k ->
-    liftM2 mplus (runContT m k) (runContT m' k)
+    liftM2 (<|>) (runContT m k) (runContT m' k)
 
 -- | Extract all from the memoization monad.
 runMemo :: Memo r s r -> ST s [r]
@@ -62,28 +61,19 @@ liftST = Memo . lift
 
 -- | Memoize a non-deterministic function.
 memo ::
-#ifdef trace
   (Show a, Show b, Hashable a, Hashable b) =>
-#else
-  (Hashable a, Hashable b) =>
-#endif
   (a -> Memo b s b) ->
-  ST s (ST s (HashMap.HashMap a (HashSet.HashSet b)), a -> Memo b s b)
+  ST s (a -> Memo b s b)
 memo f = do
   ref <- newSTRef HashMap.empty
-  pure
-    ( fmap fst <$> readSTRef ref,
-      \x ->
+  pure $ \x ->
         callCC $ \k -> do
           table <- liftST $ readSTRef ref
           let update e = liftST . writeSTRef ref . HashMap.insert x e
           case HashMap.lookup x table of
             Nothing -> do
               -- Producer Node
-
-#ifdef trace
-              traceM ("Producer: " ++ show x)
-#endif
+              -- traceM ("Producer: " ++ show x)
 
               update (HashSet.empty, [k]) table
               y <- f x
@@ -93,18 +83,13 @@ memo f = do
                 Just (ys, ks)
                   | y `HashSet.member` ys -> mzero
                   | otherwise -> do
-#ifdef trace
-                      traceM ("Produce: " ++ show (x, y))
-#endif
+                      -- traceM ("Produce: " ++ show y)
                       update (HashSet.insert y ys, ks) table'
                       msum [k' y | k' <- ks]
             Just (ys, ks) -> do
               -- Consumer Node
-
-#ifdef trace
-              traceM ("Consume: " ++ show x)
-#endif
+              -- traceM ("Consume: " ++ show x)
 
               update (ys, k : ks) table
               msum [k y | y <- HashSet.toList ys]
-    )
+    

@@ -1,25 +1,34 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module HoMSL.ClauseSet
-  ( ClauseSet (..),
+  ( -- * Clause sets grouped by head.
+    ClauseSet (..),
+    null,
     insert,
     lookup,
-    fromList,
+    fromFormula,
+    fromFormulaList,
+    toFormula,
   )
 where
 
-import Data.Foldable
+import Debug.Trace
+import Data.Foldable hiding (null)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Maybe
+import Data.Hashable
+import GHC.Generics
 import HoMSL.Syntax
 import Control.DeepSeq
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, null)
 
--- | A collection of clauses grouped by head symbol.
+-- | A collection of clauses grouped by head.
 newtype ClauseSet = ClauseSet
-  { getMap :: HashMap.HashMap (String, Maybe String) (HashSet.HashSet Formula)
+  { getClauses :: HashMap.HashMap AtomType (HashSet.HashSet Formula)
   }
   deriving newtype NFData
 
@@ -38,30 +47,56 @@ instance Show ClauseSet where
           y <- HashSet.toList ys
       ]
 
--- | Insert a value into a table.
-insert :: String -> Maybe String -> Formula -> ClauseSet -> ClauseSet
-insert p mf fm (ClauseSet cs) =
-  ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) (p, mf) cs)
+-- | Is the clause set empty.
+null :: ClauseSet -> Bool
+null (ClauseSet cs) =
+  all HashSet.null cs
 
--- | Lookup values from the table.
-lookup :: String -> Maybe String -> ClauseSet -> [Formula]
-lookup p mf (ClauseSet cs) =
-  case HashMap.lookup (p, mf) cs of
+-- | Insert a formula into the clause set.
+insert :: AtomType -> Formula -> ClauseSet -> ClauseSet
+insert head fm (ClauseSet cs) =
+  ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) head cs)
+
+-- | Lookup formula with the given head.
+-- N.B. Looking up a flat atom returns all /shallow clauses/.
+lookup :: AtomType -> ClauseSet -> [Formula]
+lookup (Flat p) (ClauseSet cs) = 
+  HashMap.foldMapWithKey (\head clauses -> 
+      case head of
+        Shallow p' _
+          | p == p' -> HashSet.toList clauses
+        _ -> []
+  ) cs
+lookup head (ClauseSet cs) =
+  case HashMap.lookup head cs of
     Nothing -> []
     Just ys -> HashSet.toList ys
 
 -- | Create a clause set from a list of formulas.
-fromList :: [Formula] -> ClauseSet
-fromList = foldl' go mempty
+fromFormulaList :: [Formula] -> ClauseSet
+fromFormulaList = foldl' go mempty
   where
     go :: ClauseSet -> Formula -> ClauseSet
     go cs (Conj fs) = foldl' go cs fs
-    go cs fm@(Clause xs Ff body) =
-      insert "false" Nothing fm cs
+    go cs fm@((Atom (App (Sym p) (Apps (Sym f) _)))) =
+      insert (Shallow p (Left f)) fm cs
     go cs fm@(Clause xs (Atom (App (Sym p) (Apps (Sym f) _))) body) =
-      insert p (Just f) fm cs
+      insert (Shallow p (Left f)) fm cs
+    go cs fm@(Clause xs (Atom (App (Sym p) (Apps (Var x) _))) body) =
+      insert (Shallow p (Right x)) fm cs
+    go cs fm@(Atom (App (Sym p) (Apps (Var x) _))) =
+      insert (Shallow p (Right x)) fm cs
     go cs fm@(Clause xs (Atom (App (Sym p) _)) body) =
-      insert p Nothing fm cs
-    go cs fm@(Clause _ _ _) = error "Invalid clause head!"
-    go cs fm =
-      go cs (Clause [] fm (Conj []))
+      insert (Flat p) fm cs
+    go cs fm@(Atom (App (Sym p) _)) =
+      insert (Flat p) fm cs
+    go cs _ = error "Invalid clause head!"
+
+-- | Create a clause set from a body.
+fromFormula :: Formula -> ClauseSet
+fromFormula fm = fromFormulaList [fm]
+
+-- | Convert a clause set into a single formula.
+toFormula :: ClauseSet -> Formula
+toFormula (ClauseSet cs) = 
+  Conj $ foldMap HashSet.toList cs

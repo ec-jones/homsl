@@ -18,7 +18,9 @@ module HoMSL.Syntax.Term
     -- * Terms
     Term (..),
     pattern Apps,
+    AtomType (..),
     funSymbol,
+    isVar,
   )
 where
 
@@ -93,7 +95,7 @@ data Term a
   | -- | Application.
     App (Term a) (Term a)
   deriving stock (Functor, Foldable, Traversable, Generic, Eq)
-  deriving anyclass NFData
+  deriving anyclass (Hashable, NFData)
 
 instance Show a => Show (Term a) where
   showsPrec _ (Var x) = shows x
@@ -102,6 +104,17 @@ instance Show a => Show (Term a) where
     showParen (p > 10) $
       showsPrec 11 fun
         . foldl' (\k arg -> k . showString " " . showsPrec 11 arg) id args
+
+
+-- | Types of terms.
+data AtomType 
+  = Flat String
+  | Shallow String (Either String Id)
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (Hashable, NFData)
+
+-- viewAtomType :: Term -> AtomType
+-- viewAtomType
 
 {-# COMPLETE Apps #-}
 
@@ -124,3 +137,7 @@ viewApps (App fun arg) =
 funSymbol :: Term a -> Maybe String
 funSymbol (Apps (Sym f) _) = Just f
 funSymbol _ = Nothing
+
+isVar :: Term a -> Bool
+isVar (Var x) = True
+isVar _ = False

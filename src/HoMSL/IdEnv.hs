@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -30,6 +32,8 @@ module HoMSL.IdEnv
   )
 where
 
+import Data.Hashable
+import GHC.Generics
 import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import Data.Traversable
@@ -42,7 +46,7 @@ import Prelude hiding (lookup, null)
 -- | Finite map from identifiers.
 newtype IdEnv a
   = IdEnv (IntMap.IntMap a)
-  deriving newtype (Functor, 
+  deriving newtype (Eq, Show, Hashable, Functor, 
       Foldable, Semigroup, Monoid, NFData)
 
 -- | The empty environment.
@@ -115,6 +119,8 @@ data Subst = Subst
   { substMap :: IdEnv (Term Id),
     substScope :: Scope
   }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass Hashable
 
 instance Semigroup Subst where
   theta <> theta' =
@@ -162,14 +168,12 @@ class FreeVars a where
   -- | Apply a substitution.
   subst :: Subst -> a -> a
 
--- TODO: Make use of functor/foldable structure
 instance FreeVars (Term Id) where
-  freeVars (Var x) = fromList [(x, x)]
-  freeVars (Sym f) = mempty
-  freeVars (App fun arg) =
-    freeVars fun <> freeVars arg
+  freeVars = foldMap (\x -> fromList [(x, x)])
 
-  subst theta = go
+  subst theta
+    | null (substMap theta) = id
+    | otherwise = go
     where
       go :: Term Id -> Term Id
       go (Var x) =

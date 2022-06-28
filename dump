@@ -1,0 +1,40 @@
+Build profile: -w ghc-9.2.3 -O1
+In order, the following will be built (use -v for more details):
+ - homsl-0.1.0.0 (lib) (file src/Control/Monad/Memoization.hs changed)
+ - homsl-0.1.0.0 (exe:hors-interface) (dependency rebuilt)
+Preprocessing library for homsl-0.1.0.0..
+Building library for homsl-0.1.0.0..
+[7 of 8] Compiling Control.Monad.Memoization ( src/Control/Monad/Memoization.hs, /home/ec-jones/HoMSL/implementation/dist-newstyle/build/x86_64-linux/ghc-9.2.3/homsl-0.1.0.0/build/Control/Monad/Memoization.o, /home/ec-jones/HoMSL/implementation/dist-newstyle/build/x86_64-linux/ghc-9.2.3/homsl-0.1.0.0/build/Control/Monad/Memoization.dyn_o )
+
+src/Control/Monad/Memoization.hs:25:1: warning: [-Wunused-imports]
+    The import of ‘Debug.Trace’ is redundant
+      except perhaps to import instances from ‘Debug.Trace’
+    To import instances alone, use: import Debug.Trace()
+   |
+25 | import Debug.Trace
+   | ^^^^^^^^^^^^^^^^^^
+
+src/Control/Monad/Memoization.hs:63:1: warning: [-Wredundant-constraints]
+    • Redundant constraints: (Show a, Show b)
+    • In the type signature for:
+           memo :: forall a b s.
+                   (Show a, Show b, Hashable a, Hashable b) =>
+                   (a -> Memo b s b) -> ST s (a -> Memo b s b)
+   |
+63 | memo ::
+   | ^^^^^^^...
+[8 of 8] Compiling HoMSL.Rewrite    ( src/HoMSL/Rewrite.hs, /home/ec-jones/HoMSL/implementation/dist-newstyle/build/x86_64-linux/ghc-9.2.3/homsl-0.1.0.0/build/HoMSL/Rewrite.o, /home/ec-jones/HoMSL/implementation/dist-newstyle/build/x86_64-linux/ghc-9.2.3/homsl-0.1.0.0/build/HoMSL/Rewrite.dyn_o )
+
+src/HoMSL/Rewrite.hs:214:51: error:
+    • Couldn't match expected type ‘Formula’ with actual type ‘Term Id’
+    • In the second argument of ‘Clause’, namely ‘head’
+      In the first argument of ‘show’, namely
+        ‘(Clause xs head result.consequent)’
+      In the second argument of ‘(++)’, namely
+        ‘show (Clause xs head result.consequent)’
+    |
+214 |           traceM ("Produced: " ++ show (Clause xs head result.consequent))
+    |                                                   ^^^^
+cabal: Failed to build homsl-0.1.0.0 (which is required by exe:hors-interface
+from homsl-0.1.0.0).
+

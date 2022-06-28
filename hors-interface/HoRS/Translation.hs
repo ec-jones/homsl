@@ -17,24 +17,15 @@ horsToHoMSL :: [Rule] -> [Transition] -> ClauseSet.ClauseSet
 horsToHoMSL rules trans =
   let env = inferSorts (rules, trans)
       qs = HashMap.keys $ HashMap.filter isPredicate env
-   in mkGoal
-        <> foldMap (mkTransitionClause env) trans
+   in foldMap (mkTransitionClause env) trans
         <> foldMap (mkRuleClauses qs env) rules
 
 -- * Constructing HoMSL clauses.
 
--- | The goal clause.
-mkGoal :: ClauseSet.ClauseSet
-mkGoal =
-  ClauseSet.ClauseSet $ HashMap.singleton ("false", Nothing) (HashSet.singleton getFormula)
-  where
-    getFormula :: Formula
-    getFormula = Clause [] Ff (Atom (App (Sym "q0") (Sym "S")))
-
 -- | Make a transition clause.
 mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> ClauseSet.ClauseSet
 mkTransitionClause env (Transition q f rhs) =
-  ClauseSet.ClauseSet $ HashMap.singleton (q, Just f) (HashSet.singleton getFormula)
+  ClauseSet.ClauseSet $ HashMap.singleton (Shallow q (Left f)) (HashSet.singleton getFormula)
   where
     getFormula :: Formula
     getFormula =
@@ -54,7 +45,7 @@ mkTransitionClause env (Transition q f rhs) =
 mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> ClauseSet.ClauseSet
 mkRuleClauses qs env (Rule f xs rhs) =
   ClauseSet.ClauseSet $
-    HashMap.fromListWith HashSet.union [((q, Just f), HashSet.singleton (getFormula q)) | q <- qs]
+    HashMap.fromListWith HashSet.union [(Shallow q (Left f), HashSet.singleton (getFormula q)) | q <- qs]
   where
     getFormula :: String -> Formula
     getFormula q =

@@ -13,11 +13,12 @@ module HoMSL.Syntax
     -- * Terms
     Term (..),
     pattern Apps,
+    AtomType (..),
     funSymbol,
+    isVar,
 
     -- * Formulas
     Formula,
-    pattern Ff,
     pattern Atom,
     pattern Conj,
     pattern Clause,
@@ -26,6 +27,7 @@ module HoMSL.Syntax
 
     -- * Parser
     parseProgram,
+    parseFormula,
 
     -- * Scope
     IdEnv.Scope,
