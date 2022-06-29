@@ -187,16 +187,12 @@ pattern Clause xs head body <-
       let (_, ys') = IdEnv.uniqAways (IdEnv.mkScope xs) ys
           rho = IdEnv.mkRenaming (zip ys ys')
        in Clause (xs ++ ys') (IdEnv.subst rho head') (Conj [body, IdEnv.subst rho body'])
-    Clause xs head body
-      | all (`notElem` xs) (IdEnv.freeVars head),
-        Conj [] <- body = head
-      | otherwise =
-          let xs' = List.filter (`IdEnv.member` IdEnv.freeVars head) xs
-           in Formula
-                { formulaShape = Clause_ xs' head body,
-                  formulaFreeVars = IdEnv.deleteMany xs' (IdEnv.freeVars body <> IdEnv.freeVars head),
-                  formulaHash = hashClause xs' (formulaHash head) (formulaHash body)
-                }
+    Clause xs head body =
+      Formula
+        { formulaShape = Clause_ xs head body,
+          formulaFreeVars = IdEnv.deleteMany xs (IdEnv.freeVars body <> IdEnv.freeVars head),
+          formulaHash = hashClause xs (formulaHash head) (formulaHash body)
+        }
 
 -- | An existential quantification.
 pattern Exists :: Id -> Formula -> Formula

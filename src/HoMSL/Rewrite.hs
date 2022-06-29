@@ -22,65 +22,59 @@ import qualified HoMSL.ClauseSet as ClauseSet
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax
 
--- * Sequents
-
--- | A rewriting sequent with semantic hashing.
-data Sequent = Sequent
-  { -- | Collection of variables in scope, marked as existential.
+-- | A sequent for rewriting.
+data Sequent = Sequent  {
+    -- | Collection of variables in scope, marked as existential.
     scope :: IdEnv.IdEnv (Id, Bool),
-    -- | Local automaton clauses.
-    antecedent :: ClauseSet.ClauseSet,
-    -- | The focused goal being rewriten.
-    consequent :: Formula,
-    -- | Is the focus the head of a nested clause.
-    nested :: Bool,
-    -- | Partial solution to existential variables.
-    solution :: Subst
+    -- | The goal formula in focus.
+    consequent :: Formula
   }
-  deriving stock (Show)
+  deriving stock Show
 
-instance Hashable Sequent where
-  hashWithSalt s sequent =
-    hashWithSalt s (sequent.nested, toFormula sequent, sequent.solution)
+-- | Rewrite the body goal clauses, deriving automaton clauses in the process.
+satisfiable :: ClauseSet.ClauseSet -> Bool
+satisfiable clauses = runST $ mdo
+  table <- memo $ \headShape -> do
+    -- Select a clause with the given head.
+    (xs, head, body) <- msum [pure (viewClause clause) | clause <- ClauseSet.lookup headShape clauses]
+    traceM ("Rewriting: " ++ show (Clause xs (Atom head) body))
 
-instance Eq Sequent where
-  sequent1 == sequent2 =
-    (sequent1.nested, toFormula sequent1, sequent1.solution)
-      == (sequent2.nested, toFormula sequent2, sequent2.solution)
+    -- Rewrite the body using the recursively constructed table.
+    let scope = IdEnv.fromList [(x, (x, False)) | x <- xs]
+        consequent = body
+    (body', subst) <- rewrite table Sequent { .. }
 
--- | Create the initial sequent from a formula.
-fromFormula :: Formula -> Sequent
-fromFormula fm = Sequent mempty mempty fm False mempty
+    -- There should be no existentials in the top-level.
+    unless (IdEnv.null (substMap subst)) $
+      error "Uncaught existential variable!"
 
--- | Convert a sequent into it's logical form.
-toFormula :: Sequent -> Formula
-toFormula Sequent {..} =
-  let us = [u | (u, False) <- toList scope]
-      es = [e | (e, True) <- toList scope]
-      head = foldl' (flip Exists) consequent es
-   in Clause us head (ClauseSet.toFormula antecedent)
+    pure (Clause xs (Atom head) body')
 
--- * Rewriting
+  null <$>
+    runMemo (table (Shallow "q0" (Left "S")))
 
--- | Normalise a sequent to a valid body formula.
--- We assume the sequent is /canonical/.
-rewrite :: ClauseSet.ClauseSet -> Formula -> [Formula]
-rewrite prog body = runST $ mdo
-  rewrite <- memo (step prog rewrite)
-  fmap toFormula <$> 
-    runMemo (step prog rewrite $ fromFormula body)
-
--- | Rewrite a sequent.
-step :: forall s. ClauseSet.ClauseSet -> (Sequent -> Memo Sequent s Sequent) -> Sequent -> Memo Sequent s Sequent
-step _ _ sequent
+-- | Rewrite a formula with a given table.
+rewrite ::
+  forall s.
+  (AtomType -> Memo Formula s Formula) ->
+  Sequent -> Memo Formula s (Formula, Subst) 
+rewrite _ sequent
   | trace ("Goal: " ++ show sequent.consequent) False = undefined
-step prog rewrite sequent@Sequent {..} = do
+rewrite table sequent@Sequent { .. } = 
   case consequent of
+    Atom pfs@(App (Sym p) (Apps (Sym f) ss)) -> do
+      -- (Step)
+      (xs, head, body) <- selectClause mempty (Shallow p (Left f))
+      traceM ("Selected: " ++ show (Clause xs (Atom head) body))
+
+      inst <- match xs head pfs
+      rewrite table sequent {consequent = subst inst body}
+
     Atom px@(App (Sym p) (Var x))
       | Just (_, True) <- IdEnv.lookup x scope -> do
-          -- (ExInst)
-          (xs, head@(Apps f _), body) <- selectClause (Flat p)
-          traceM ("Selected1: " ++ show (Clause xs (Atom head) body) ++ " for " ++ show (toFormula sequent))
+          -- (ExInst/Step)
+          (xs, head@(Apps f _), body) <- selectClause mempty (Flat p)
+          traceM ("Selected: " ++ show (Clause xs (Atom head) body))
 
           -- Create fresh instance
           let (_, xs') = uniqAways (fmap fst scope) xs
@@ -90,32 +84,29 @@ step prog rewrite sequent@Sequent {..} = do
               scope' =
                 IdEnv.fromList [(x', (x', True)) | x' <- xs'] <> IdEnv.delete x scope
 
-          rewrite
-            sequent
-              { scope = scope',
-                consequent = body',
-                solution = mkSubst [(x, Apps f (fmap Var xs'))]
-              }
-      | nested -> do
-          -- (Refl)
-          (_, _, _) <- selectClause (Shallow p (Right x))
-          pure sequent {consequent = Conj []}
-      | otherwise -> pure sequent 
-    Atom pyss@(App (Sym p) (Apps (Var y) ss))
-      | nested,
-        all isVar ss -> pure sequent
-      | otherwise -> do
+          (fm, theta) <- rewrite table sequent { scope = scope', consequent = body' }
+          pure (fm, mkSubst [(x, Apps f (fmap Var xs'))] <> theta)
+
+      | Just (_, False) <- IdEnv.lookup x scope -> 
+          pure (consequent, mempty)
+
+      | Nothing <- IdEnv.lookup x scope ->
+          error "Variable not in scope!"
+
+    Atom pyss@(App (Sym p) (Apps (Var x) ss))
+      | not (null ss),
+        Just (_, False) <- IdEnv.lookup x scope -> do
           -- (Assm)
-          (xs, head, body) <- selectClause (Flat p)
-          traceM ("Selected2: " ++ show (Clause xs (Atom head) body) ++ " for " ++ show (toFormula sequent) )
+          (xs, head, body) <- selectClause mempty (Flat p)
+          traceM ("Selected: " ++ show (Clause xs (Atom head) body))
 
           -- Split variables into those that are partially applied
           let (_, ys) = List.splitAt (length xs - length ss) xs
 
-          -- Ensure valid partial application, y -> p ys.
+          -- Ensure valid partial application, x -> p zs.
           guard
             ( length xs >= length ss
-                && sortArgs (idSort y) == fmap idSort ys
+                && sortArgs (idSort x) == fmap idSort ys
             )
 
           -- Create fresh instance with restricted variables.
@@ -125,108 +116,86 @@ step prog rewrite sequent@Sequent {..} = do
 
               -- Build formula.
               inst = mkSubst (zip ys' ss)
-              head' = App (Sym p) (Apps (Var y) (map Var ys'))
-              fm =
-                Conj
-                  [ subst inst body',
-                    Clause ys' (Atom head') body'
-                  ]
+              head' = App (Sym p) (Apps (Var x) (map Var ys'))
+              fm = Conj [subst inst body', Clause ys' (Atom head') body']
 
-          rewrite sequent {consequent = fm}
-    Atom pfs@(App (Sym p) (Apps (Sym f) ss)) -> do
-      -- (Step)
-      (xs, head, body) <- selectClause (Shallow p (Left f))
-      traceM ("Selected3: " ++ show (Clause xs (Atom head) body) ++ " for " ++ show (toFormula sequent) )
+          rewrite table sequent { consequent = fm } 
 
-      inst <- match xs head pfs
-      rewrite sequent {consequent = subst inst body}
+      | Just (_, True) <- IdEnv.lookup x scope  -> 
+        error "Higher-order existentials are not yet supported!"
+        
+      | Nothing <- IdEnv.lookup x scope ->
+          error "Variable not in scope!"
+
     Atom _ -> error "Invalid atom in sequent!"
-    Conj [] -> pure sequent
+
+    Conj [] -> pure (Conj [], mempty)
     Conj (fm : fms) -> do
-      -- (AndL)
-      result <- step prog rewrite $ sequent {consequent = fm}
-      result' <-
-        step prog rewrite $
-              sequent
-                { consequent = Conj [subst result.solution fm | fm <- fms],
-                  solution = result.solution
-                }
-      pure
-        result'
-          { consequent = Conj [result.consequent, result'.consequent]
-          }
-    Exists x subgoal -> do
+      -- (AndL/R)
+      (fm', theta) <- rewrite table sequent { consequent = fm }
+      (fms', theta') <- rewrite table sequent { consequent = Conj (subst theta <$> fms) }
+      pure (Conj [fm', fms'], theta <> theta')
+    
+    Exists x body -> do
       -- (Ex/ExInst)
-      result <-
-        step prog rewrite
+      (body', theta) <-
+        rewrite table
           sequent
             { scope = IdEnv.insert x (x, True) scope,
-              consequent = subgoal
+              consequent = body
             }
 
-      when (x `IdEnv.member` freeVars subgoal) $
-        error "Escaped existential!"
-      pure
-        result
-          { solution = deleteSubst [x] result.solution
-          }
-    Clause xs head body -> do
-      -- (Imp)
-      result <-
-        step prog rewrite
-          sequent
-            { scope = IdEnv.fromList [(x, (x, False)) | x <- xs] <> scope,
-              consequent = head,
-              antecedent = ClauseSet.fromFormula body <> antecedent,
-              nested = True
-            }
+      pure (body', deleteSubst [x] theta)
 
-      -- (Scope1)
-      let head' = result.consequent
-      if any (`elem` xs) (freeVars head')
-        then
-          pure
-            sequent
-              { consequent = Clause xs head' body,
-                solution = result.solution
-              }
-        else
-          pure
-            sequent
-              { consequent = head',
-                solution = result.solution
-              }
+    Clause xs (Atom pfs@(App (Sym p) (Apps (Sym f) ss))) body -> do
+      -- (Imp/Step)
+      (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Left f))
+      traceM ("Selected: " ++ show (Clause ys (Atom head) body'))
+      inst <- match ys head pfs
+      rewrite table sequent {consequent = Clause xs (subst inst body') body}
+
+    Clause xs (Atom pxss@(App (Sym p) (Apps (Var x) ss))) body
+      | all (`notElem` xs) (freeVars pxss) ->
+        -- (Scope1)
+        pure (Atom pxss, mempty)
+
+      | x `notElem` xs,
+        all (`elem` map Var xs) ss,
+        not (null ss) -> 
+          -- Clause is already in the right form.
+          pure (consequent, mempty)
+
+      | otherwise -> do
+        -- (Imp/Refl/Step)
+        (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Right x))
+        traceM ("Selected: " ++ show (Clause xs (Atom head) body))
+        inst <- match ys head pxss
+        rewrite table sequent {consequent = Clause xs (subst inst body') body}
+
+    Clause _ _ _ -> error ("Unexpected clause head in body: " ++ show consequent)
+
   where
-    selectClause :: AtomType -> Memo Sequent s ([Id], Term Id, Formula)
-    selectClause head =
-      msum (pure . viewClause <$> ClauseSet.lookup head antecedent) <|> do
-          (xs, head, body) <- msum $ map (pure . viewClause) $ ClauseSet.lookup head prog
-          !() <- traceM ("Working On: " ++ show (Clause xs (Atom head) body))
-          result <-
-            rewrite
-              Sequent
-                { scope = IdEnv.fromList [(x, (x, False)) | x <- xs],
-                  antecedent = mempty,
-                  consequent = body,
-                  nested = False,
-                  solution = mempty
-                }
-          traceM ("Produced: " ++ show (Clause xs (Atom head) result.consequent))
-          pure (xs, head, result.consequent)
+    -- | Choose antecedent clause or a clause from the table.
+    selectClause :: ClauseSet.ClauseSet -> AtomType -> Memo Formula s ([Id], Term Id, Formula)
+    selectClause body head =
+      msum (pure . viewClause <$> ClauseSet.lookup head body) <|>
+        case head of
+          Shallow _ (Right _) -> empty
+          nonLocal -> viewClause <$> table head
 
 -- | @matchHead xs head tm@ finds instance of @head@ that matches @tm@ instantitates @xs@.
 -- N.B. The head is assumed to be shallow and linear.
 match ::
+  forall s. 
   [Id] ->
   Term Id ->
   Term Id ->
-  Memo Sequent s Subst
+  Memo Formula s Subst
 match xs = go mempty
   where
-    go :: Subst -> Term Id -> Term Id -> Memo Sequent s Subst
+    go :: Subst -> Term Id -> Term Id -> Memo Formula s Subst
     go theta (Var x) t
-      | x `elem` xs = pure (mkSubst [(x, t)] <> theta)
-      | Var x == t = pure theta
+      | x `elem` xs =  pure (mkSubst [(x, t)] <> theta)
       | otherwise = empty
     go theta (Sym f) (Sym g)
       | f == g = pure theta
@@ -247,9 +216,8 @@ restrictBody xs = Conj . go []
       | otherwise = acc
     go acc (Conj fs) =
       foldl' go acc fs
-    go acc f@(Clause ys head body)
-      -- We assume the body only concerns ys.
-      | all (`elem` (xs ++ ys)) (freeVars head) = f : acc
+    go acc f@(Clause ys (Atom (App (Sym p) (Apps (Var x) _))) body)
+      | x `elem` xs = f : acc
       | otherwise = acc
-    go acc _ =
-      error "Non-automaton clause!"
+    go acc body =
+      error ("Non-automaton clause: " ++ show body)

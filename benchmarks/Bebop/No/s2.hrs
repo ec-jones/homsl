@@ -19,8 +19,3 @@ qt true -> .
 qf false -> .
 q0 br -> q0 q0.
 %ENDA
-
-
-q0 S
-q0 (br (if (Not (L1 (L1 true))) err ok) (if (Not (L1 (L1 false))) err ok))
-q0 (if (Not (L1 (L1 true))) err ok) /\ q0 (if (Not (L1 (L1 false))) err ok)
