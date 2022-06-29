@@ -7,7 +7,7 @@
 
 module HoMSL.Resolve
   ( -- * Clause Sets
-    ClauseSet,
+    ClauseSet (..),
     lookupClauses,
     toClauseSet,
     fromClauseSet,
@@ -29,6 +29,7 @@ import qualified Data.HashSet as HashSet
 import Data.Hashable
 import qualified Data.List as List
 import Data.Maybe
+import qualified HoMSL.IdEnv as IdEnv
 import Data.Traversable
 import Debug.Trace
 import HoMSL.Syntax
@@ -102,7 +103,7 @@ isAutoBody (Clause _ _ _) = False
 isAutoBody (Exists _ _) = False
 
 -- | Check if a formula is a valid head for a /nested/ automaton clause.
-isStrictAutoHead :: Term -> Bool
+isStrictAutoHead :: Term Id -> Bool
 isStrictAutoHead (App (Sym p) (Apps (Var f) xs)) =
   all (\case Var _ -> True; nonVar -> False) xs
     && not (null xs)
@@ -180,7 +181,7 @@ resolve (Atom tm@(App (Sym p) arg)) = do
       guard
         ( not (null ss)
             -- When existential we can use (ExInst)
-            && not (y `inScope` existentials env)
+            && not (y `IdEnv.member` existentials env)
         )
 
       -- Select a clause with an appropriate head
@@ -230,7 +231,7 @@ resolve (Conj fs) = do
   pure (Conj fs', theta)
 resolve (Clause xs body head)
   | Atom t <- head, isStrictAutoHead t = empty
-  | all (`notElem` xs) (listScope $ freeVars head) =
+  | all (`notElem` xs) (freeVars head) =
     -- (Scope1)
     pure (head, mempty)
   | otherwise =
@@ -265,8 +266,8 @@ resolve (Exists x body) =
         Just tm -> do
           -- Existentials only get instantiated by fresh existentials.
           pure
-            ( foldl' (flip Exists) body' (listScope $ freeVars tm),
-              removeFromSubst [x] theta
+            ( foldl' (flip Exists) body' (freeVars tm),
+              deleteSubst [x] theta
             )
 
 -- Select one conjunct to resolve.
@@ -292,13 +293,13 @@ restrictBody xs = Conj . go []
   where
     go :: [Formula] -> Formula -> [Formula]
     go acc f@(Atom tm)
-      | all (`elem` xs) (listScope $ freeVars tm) = f : acc
+      | all (`elem` xs) (freeVars tm) = f : acc
       | otherwise = acc
     go acc (Conj fs) =
       foldl' go acc fs
     go acc f@(Clause ys body head)
       -- We assume the body only concerns ys.
-      | all (`elem` (xs ++ ys)) (listScope $ freeVars head) = f : acc
+      | all (`elem` (xs ++ ys)) (freeVars head) = f : acc
       | otherwise = acc
     go acc _ =
       error "Non-automaton clause!"
@@ -306,10 +307,10 @@ restrictBody xs = Conj . go []
 -- | @matchHead ys lhs rhs@ finds instances @theta@ of @ys@ and @theta'@ such that
 -- @subst theta lhs = subst theta' rhs@ and @subst theta' rhs@ is closed.
 -- The rhs is assumed to be /shallow/ and /linear/.
-matchHead :: [Id] -> Term -> Term -> LogicT (Reader ResolveEnv) (Subst, Subst)
+matchHead :: [Id] -> Term Id -> Term Id -> LogicT (Reader ResolveEnv) (Subst, Subst)
 matchHead ys lhs rhs = execStateT (go lhs rhs) mempty
   where
-    go :: Term -> Term -> StateT (Subst, Subst) (LogicT (Reader ResolveEnv)) ()
+    go :: Term Id -> Term Id -> StateT (Subst, Subst) (LogicT (Reader ResolveEnv)) ()
     go (Var x) (Var y)
       | x == y, y `notElem` ys = pure ()
     go (Sym f) (Sym g)
@@ -328,7 +329,7 @@ matchHead ys lhs rhs = execStateT (go lhs rhs) mempty
       env <- ask
       gets (lookupSubst x . fst) >>= \case
         Nothing
-          | x `inScope` existentials env -> do
+          | x `IdEnv.member` existentials env -> do
               -- Expand x with fresh arguments.
               let (_, xs) =
                     mapAccumL

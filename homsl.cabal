@@ -8,7 +8,6 @@ category:           Verification
 library
   exposed-modules:  HoMSL.Syntax,
                     HoMSL.Resolve,
-                    HoMSL.Parser
 
   other-modules:
 
@@ -17,6 +16,7 @@ library
   build-depends:    base,
                     mtl,
                     logict,
+                    deepseq,
                     hashable,
                     parsec,
                     containers,
@@ -39,49 +39,35 @@ library
   
   default-language: Haskell2010
 
-library socket-example
-  exposed-modules:  Socket
 
-  other-modules:
-
-  hs-source-dirs:   src
-
-  build-depends:    base,
-                    mtl,
-                    selective,
-                    containers,
-                    homsl,
-                    parsec,
-                    logict,
-                    hashable,
-                    unordered-containers
-
-  ghc-options:      -Wall
-                    -Wcompat
-                    -Widentities
-                    -Wincomplete-uni-patterns
-                    -Wincomplete-record-updates
-                    -Wredundant-constraints
-                    -Wmissing-export-lists
-                    -Wpartial-fields
-                    -Wmissing-deriving-strategies
-                    -Wunused-packages
-
-                    -Wno-unused-matches
-                    -Wno-name-shadowing
-                    -Wno-unused-local-binds
-  
-  default-language: Haskell2010
-
-
-test-suite test
-  type:             exitcode-stdio-1.0
-  
+executable hors-interface
   main-is:          Main.hs
 
-  hs-source-dirs:   test
+  hs-source-dirs:   hors-interface
 
   build-depends:    base,
-                    homsl
+                    mtl,
+                    containers,
+                    unordered-containers,
+                    homsl,
+                    directory,
+                    parsec,
+                    criterion,
+                    deepseq
 
+  ghc-options:      -Wall
+                    -Wcompat
+                    -Widentities
+                    -Wincomplete-uni-patterns
+                    -Wincomplete-record-updates
+                    -Wredundant-constraints
+                    -Wmissing-export-lists
+                    -Wpartial-fields
+                    -Wmissing-deriving-strategies
+                    -Wunused-packages
+
+                    -Wno-unused-matches
+                    -Wno-name-shadowing
+                    -Wno-unused-local-binds
+  
   default-language: Haskell2010
