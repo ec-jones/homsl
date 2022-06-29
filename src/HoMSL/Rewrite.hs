@@ -37,7 +37,7 @@ satisfiable clauses = runST $ mdo
   table <- memo $ \headShape -> do
     -- Select a clause with the given head.
     (xs, head, body) <- msum [pure (viewClause clause) | clause <- ClauseSet.lookup headShape clauses]
-    traceM ("Rewriting: " ++ show (Clause xs (Atom head) body))
+    -- traceM ("Rewriting: " ++ show (Clause xs (Atom head) body))
 
     -- Rewrite the body using the recursively constructed table.
     let scope = IdEnv.fromList [(x, (x, False)) | x <- xs]
@@ -58,14 +58,14 @@ rewrite ::
   forall s.
   (AtomType -> Memo Formula s Formula) ->
   Sequent -> Memo Formula s (Formula, Subst) 
-rewrite _ sequent
-  | trace ("Goal: " ++ show sequent.consequent) False = undefined
+-- rewrite _ sequent
+--   | trace ("Goal: " ++ show sequent.consequent) False = undefined
 rewrite table sequent@Sequent { .. } = 
   case consequent of
     Atom pfs@(App (Sym p) (Apps (Sym f) ss)) -> do
       -- (Step)
       (xs, head, body) <- selectClause mempty (Shallow p (Left f))
-      traceM ("Selected: " ++ show (Clause xs (Atom head) body))
+      -- traceM ("Selected: " ++ show (Clause xs (Atom head) body))
 
       inst <- match xs head pfs
       rewrite table sequent {consequent = subst inst body}
@@ -74,7 +74,7 @@ rewrite table sequent@Sequent { .. } =
       | Just (_, True) <- IdEnv.lookup x scope -> do
           -- (ExInst/Step)
           (xs, head@(Apps f _), body) <- selectClause mempty (Flat p)
-          traceM ("Selected: " ++ show (Clause xs (Atom head) body))
+          -- traceM ("Selected: " ++ show (Clause xs (Atom head) body))
 
           -- Create fresh instance
           let (_, xs') = uniqAways (fmap fst scope) xs
@@ -98,7 +98,7 @@ rewrite table sequent@Sequent { .. } =
         Just (_, False) <- IdEnv.lookup x scope -> do
           -- (Assm)
           (xs, head, body) <- selectClause mempty (Flat p)
-          traceM ("Selected: " ++ show (Clause xs (Atom head) body))
+          -- traceM ("Selected: " ++ show (Clause xs (Atom head) body))
 
           -- Split variables into those that are partially applied
           let (_, ys) = List.splitAt (length xs - length ss) xs
@@ -150,7 +150,7 @@ rewrite table sequent@Sequent { .. } =
     Clause xs (Atom pfs@(App (Sym p) (Apps (Sym f) ss))) body -> do
       -- (Imp/Step)
       (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Left f))
-      traceM ("Selected: " ++ show (Clause ys (Atom head) body'))
+      -- traceM ("Selected: " ++ show (Clause ys (Atom head) body'))
       inst <- match ys head pfs
       rewrite table sequent {consequent = Clause xs (subst inst body') body}
 
@@ -168,7 +168,7 @@ rewrite table sequent@Sequent { .. } =
       | otherwise -> do
         -- (Imp/Refl/Step)
         (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Right x))
-        traceM ("Selected: " ++ show (Clause xs (Atom head) body))
+        -- traceM ("Selected: " ++ show (Clause xs (Atom head) body))
         inst <- match ys head pxss
         rewrite table sequent {consequent = Clause xs (subst inst body') body}
 
@@ -196,6 +196,8 @@ match xs = go mempty
     go :: Subst -> Term Id -> Term Id -> Memo Formula s Subst
     go theta (Var x) t
       | x `elem` xs =  pure (mkSubst [(x, t)] <> theta)
+      | Var y <- t, 
+        y == x = pure mempty
       | otherwise = empty
     go theta (Sym f) (Sym g)
       | f == g = pure theta
