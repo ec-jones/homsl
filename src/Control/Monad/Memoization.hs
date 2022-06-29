@@ -42,13 +42,13 @@ instance Alternative (Memo r s) where
   empty = Memo $ ContT $ \_ -> pure empty
 
   Memo m <|> Memo m' = Memo $ ContT $ \k ->
-    liftM2 interleave (runContT m k) (runContT m' k)
+    liftM2 (<|>) (runContT m k) (runContT m' k)
 
 instance MonadPlus (Memo r s) where
   mzero = Memo $ ContT $ \_ -> pure mzero
 
   Memo m `mplus` Memo m' = Memo $ ContT $ \k ->
-    liftM2 interleave (runContT m k) (runContT m' k)
+    liftM2 (<|>) (runContT m k) (runContT m' k)
 
 -- | Extract all from the memoization monad.
 runMemo :: Memo r s r -> ST s [r]

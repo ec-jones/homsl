@@ -34,38 +34,38 @@ main = do
 
   -- Benchmark groups
   defaultMain [
-      bgroup "Bebop/No" [bench bebopNo $ whnf (isNo . satisfiable) problem
+      bgroup "Bebop/No" [bench bebopNo $ whnf (isNo . runBenchmark) problem
                           | (bebopNo, problem) <- bebopNos
                       ],
-      bgroup "Bebop/Yes" [bench bebopYes $ whnf (isYes . satisfiable) problem
+      bgroup "Bebop/Yes" [bench bebopYes $ whnf (isYes . runBenchmark) problem
                           | (bebopYes, problem) <- bebopYess
                       ],
 
-      bgroup "Flow/No" [bench flowNo $ whnf (isNo . satisfiable) problem
+      bgroup "Flow/No" [bench flowNo $ whnf (isNo . runBenchmark) problem
                           | (flowNo, problem) <- flowNos
                       ],
-      bgroup "Flow/Yes" [bench flowYes $ whnf (isYes . satisfiable) problem
+      bgroup "Flow/Yes" [bench flowYes $ whnf (isYes . runBenchmark) problem
                           | (flowYes, problem) <- flowYess
                       ],
 
-      bgroup "GTRecS/No" [bench gtrecsNo $ whnf (isNo . satisfiable) problem
+      bgroup "GTRecS/No" [bench gtrecsNo $ whnf (isNo . runBenchmark) problem
                           | (gtrecsNo, problem) <- gtrecsNos
                       ],
-      bgroup "GTRecS/Yes" [bench gtrecsYes $ whnf (isYes . satisfiable) problem
+      bgroup "GTRecS/Yes" [bench gtrecsYes $ whnf (isYes . runBenchmark) problem
                           | (gtrecsYes, problem) <- gtrecsYess
                       ],
 
-      bgroup "TRecS/No" [bench trecsNo $ whnf (isNo . satisfiable) problem
+      bgroup "TRecS/No" [bench trecsNo $ whnf (isNo . runBenchmark) problem
                           | (trecsNo, problem) <- trecsNos
                       ],
-      bgroup "TRecS/Yes" [bench trecsYes $ whnf (isYes . satisfiable) problem
+      bgroup "TRecS/Yes" [bench trecsYes $ whnf (isYes . runBenchmark) problem
                           | (trecsYes, problem) <- trecsYess
                       ],
 
-      bgroup "HorSat/No" [bench horsatNo $ whnf (isNo . satisfiable) problem
+      bgroup "HorSat/No" [bench horsatNo $ whnf (isNo . runBenchmark) problem
                           | (horsatNo, problem) <- horsatNos
                       ],
-      bgroup "HorSat/Yes" [bench horsatYes $ whnf (isYes . satisfiable) problem
+      bgroup "HorSat/Yes" [bench horsatYes $ whnf (isYes . runBenchmark) problem
                           | (horsatYes, problem) <- horsatYess
                       ]
     ]
@@ -79,10 +79,9 @@ isYes False = ()
 isYes True = error "Benchmark failed!"
 
 -- | Run a specific benchmark.
-runBenchmark :: FilePath -> IO Bool
-runBenchmark path = do
-  input <- readBenchmark path
-  pure (satisfiable input)
+runBenchmark :: ClauseSet.ClauseSet -> Bool
+runBenchmark input = 
+  rewrite input $ Atom $ App (Sym "q0") (Sym "S")
 
 -- | Read all .hrs problems in a benchmark group.
 readBenchmarks :: String -> IO [(FilePath, ClauseSet.ClauseSet)]
