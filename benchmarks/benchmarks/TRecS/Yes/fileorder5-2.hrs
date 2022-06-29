@@ -1,0 +1,86 @@
+/*** An example based on the source code of OCaml 3.11.0, bytecomp/symtable.ml ***/
+/*** The function ReadSec passes to C1 three closures for reading/closing a file.
+ *** C1 then uses the closures to read/close the file.
+ ***/
+
+%BEGING
+S -> ReadSec C1.
+C1 rstring rstruct clreader -> rstruct (rstring (Loop rstring rstruct clreader)).
+Loop rstring rstruct clreader -> br (DLLinit rstring rstruct clreader) (Loop rstring rstruct clreader).
+DLLinit rstring rstruct clreader -> rstring (rstruct (clreader end)).
+/*** readsec ***/
+ReadSec k -> br (k Nop Nop Nop) (Newr (ReadSec2 k)).
+ReadSec2 k x -> ReadToc x (ReadSec3 x k).
+ReadSec3 x k -> k (Rsecstr x) (Rsecstruct x) (Close x).
+Nop k -> k.
+/*** readtoc ***/
+ReadToc x k -> SeekIn x (InputBinary x (ReallyInput x (SeekIn x (ReadTocLoop x k)))).
+ReadTocLoop x k -> br k (ReallyInput x (InputBinary x (ReadTocLoop x k))).
+/*** Rsecstr **/
+Rsecstr x k -> SeekSec x (ReallyInput x k).
+/*** Rsecstruct **/
+Rsecstruct x k -> SeekSec x (InputValue x k).
+/*** SeekSec ***/
+SeekSec x k -> SeekSub x k.
+SeekSub x k -> br (SeekIn x k) (SeekSub x (SeekIn x k)). 
+SeekIn x k -> Read x k.
+ReallyInput x k -> Read x k.
+InputBinary x k -> Read x k.
+InputValue x k -> Read x k.
+/*** common definitions for read-only files ***/
+I x y -> x y.
+K x y -> y.
+Newr k -> br (newr (k I)) (k K).
+Close x k -> T.
+Read x k -> T.
+/** #rule: 23, rule size: 110 **/
+T -> GenConsume Newr2 F1 end2. 
+F1 x k -> br (Close2 x k) (Read2 x (F1 x k)).
+GenConsume gen use k -> br k (GenConsume gen use (gen (C use k))).
+C use k x -> use x k.
+Newr2 k -> br (newr2 (k I)) (k K).
+Close2 x k -> x close2 k.
+Read2 x k -> x read2 k.
+%ENDG
+
+%BEGINA
+q0 br -> q0 q0.
+qr br -> qr qr.
+qany br -> qany qany.
+q0 newr -> q1.
+q1 newr -> q1.
+q0 newr2 -> q1.
+qr newr -> q1.
+qr read -> q1.
+qany read -> q1.
+qr close -> q1.
+qany close -> q1.
+qc end -> .
+q0 end -> .
+qany end -> .
+q1 br -> q1 q1.
+qw br -> qw qw.
+qrw br -> qrw qrw.
+q1 newr2 -> qr.
+qr read2 -> qr.
+q1 read2 -> q1.
+qr close2 -> qc.
+q1 close2 -> q1.
+qc br -> qc qc.
+q1 neww -> qw.
+qw write -> qw.
+qw close2 -> qc.
+qw newr2 -> qrw.
+qr neww -> qrw.
+qc newr2 -> qrw.
+qc neww -> qrw.
+qrw newr2 -> qrw.
+qrw neww -> qrw.
+qrw read2 -> qrw.
+qrw write -> qrw.
+qrw close2 -> qrw.
+qc end2 ->.
+q1 end2 ->.
+q0 end2 ->.
+qrw end2 ->.
+%ENDA

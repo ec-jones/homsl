@@ -1,0 +1,59 @@
+%BEGING
+S = br (if (Not (L1 (L1 true))) err ok) (if (Not (L1 (L1 false))) err ok).
+Not b = if b false true.
+Or b1 b2 = if b1 true b2.
+Bits a b c g = if (Or (Not a) (Or (Not b) (Not c))) (if (Not a) (Bits true b c g) (if (Not b) (Bits false true c g) (Bits false false true g))) g.
+L1 g = Not (if g (Bits false false false g) (L2 (L2 g))).
+L2 g = Not (if g (Bits false false false g) (L3 (L3 g))).
+L3 g = Not (if g (Bits false false false g) (L4 (L4 g))).
+L4 g = Not (if g (Bits false false false g) (L5 (L5 g))).
+L5 g = Not (if g (Bits false false false g) (L6 (L6 g))).
+L6 g = Not (if g (Bits false false false g) (L7 (L7 g))).
+L7 g = Not (if g (Bits false false false g) (L8 (L8 g))).
+L8 g = Not (if g (Bits false false false g) (L9 (L9 g))).
+L9 g = Not (if g (Bits false false false g) (L10 (L10 g))).
+L10 g = Not (if g (Bits false false false g) (L11 (L11 g))).
+L11 g = Not (if g (Bits false false false g) (L12 (L12 g))).
+L12 g = Not (if g (Bits false false false g) (L13 (L13 g))).
+L13 g = Not (if g (Bits false false false g) (L14 (L14 g))).
+L14 g = Not (if g (Bits false false false g) (L15 (L15 g))).
+L15 g = Not (if g (Bits false false false g) (L16 (L16 g))).
+L16 g = Not (if g (Bits false false false g) (L17 (L17 g))).
+L17 g = Not (if g (Bits false false false g) (L18 (L18 g))).
+L18 g = Not (if g (Bits false false false g) (L19 (L19 g))).
+L19 g = Not (if g (Bits false false false g) (L20 (L20 g))).
+L20 g = Not (if g (Bits false false false g) (L21 (L21 g))).
+L21 g = Not (if g (Bits false false false g) (L22 (L22 g))).
+L22 g = Not (if g (Bits false false false g) (L23 (L23 g))).
+L23 g = Not (if g (Bits false false false g) (L24 (L24 g))).
+L24 g = Not (if g (Bits false false false g) (L25 (L25 g))).
+L25 g = Not (if g (Bits false false false g) (L26 (L26 g))).
+L26 g = Not (if g (Bits false false false g) (L27 (L27 g))).
+L27 g = Not (if g (Bits false false false g) (L28 (L28 g))).
+L28 g = Not (if g (Bits false false false g) (L29 (L29 g))).
+L29 g = Not (if g (Bits false false false g) (L30 (L30 g))).
+L30 g = Not (if g (Bits false false false g) (L31 (L31 g))).
+L31 g = Not (if g (Bits false false false g) (L32 (L32 g))).
+L32 g = Not (if g (Bits false false false g) (L33 (L33 g))).
+L33 g = Not (if g (Bits false false false g) (L34 (L34 g))).
+L34 g = Not (if g (Bits false false false g) (L35 (L35 g))).
+L35 g = Not (if g (Bits false false false g) (L36 (L36 g))).
+L36 g = Not (if g (Bits false false false g) (L37 (L37 g))).
+L37 g = Not (if g (Bits false false false g) (L38 (L38 g))).
+L38 g = Not (if g (Bits false false false g) (L39 (L39 g))).
+L39 g = Not (if g (Bits false false false g) (L40 (L40 g))).
+L40 g = Not (if g (Bits false false false g) g).
+%ENDG
+
+%BEGINA
+q0 ok -> .
+q0 if -> (1, qt) (2, q0).
+q0 if -> (1, qf) (3, q0).
+qt if -> (1, qt) (2, qt).
+qt if -> (1, qf) (3, qt).
+qf if -> (1, qt) (2, qf).
+qf if -> (1, qf) (3, qf).
+qt true -> .
+qf false -> .
+q0 br -> q0 q0.
+%ENDA

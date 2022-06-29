@@ -1,0 +1,41 @@
+%BEGING
+  S -> Main .
+  HighScoreStore k -> pinit k .
+  SetNumber k -> ccreate k .
+  Main -> MainCGI .
+  MainCGI -> br (PlayTheGame MainCGI) (Admin MainCGI) .
+  Admin k -> HighScoreStore (pget k) .
+  PlayTheGame k -> SetNumber (Play k) .
+  Play k -> ProcessGuess k .
+  ProcessGuess k -> cget (br ((br (ProcessGuessS k) (ProcessGuessF k))) k) .
+  ProcessGuessS k -> cdelete (YouGotIt k) .
+  ProcessGuessF k -> cset (Play k) .
+  YouGotIt k -> AddToHighScore k .
+  AddToHighScore k -> br k (HighScoreStore (pset k)) .
+%ENDG
+
+%BEGINA
+  q0 pinit -> q1 .
+  q0 ccreate -> q2 .
+  q1 pget -> q1. 
+  q1 pset -> q1.
+  q1 pinit -> q1.
+  q1 ccreate -> q3.
+  q2 cdelete -> q0.
+  q2 cset -> q2.
+  q2 cget -> q2.
+  q2 ccreate -> q2.
+  q2 pinit -> q3.
+  q3 cset -> q3.
+  q3 cget -> q3.
+  q3 pget -> q3.
+  q3 pset -> q3.
+  q3 pinit -> q3.
+  q3 ccreate -> q3.
+  q3 cdelete -> q1.
+  q0 br -> q0 q0.
+  q1 br -> q1 q1.
+  q2 br -> q2 q2.
+  q3 br -> q3 q3.
+%ENDA
+

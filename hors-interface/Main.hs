@@ -76,10 +76,10 @@ isYes (False, _) = ()
 isYes (True, _) = error "Problem failed!"
 
 -- | Read all .hrs problems in a benchmark group.
-readBenchmarks :: String -> IO [(FilePath, ClauseSet Formula)]
+readBenchmarks :: String -> IO [(FilePath, [Formula])]
 readBenchmarks group = do
   problems <- listDirectory ("benchmarks/" ++ group ++ "/")
   problems <- forM problems $ \problem -> do
     (rules, trans) <- parseHoRS <$> readFile ("benchmarks/" ++ group ++ "/" ++ problem)
-    pure (problem, horsToHoMSL rules trans)
+    pure (problem, fromClauseSet $ horsToHoMSL rules trans)
   pure (force problems)

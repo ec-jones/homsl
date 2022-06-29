@@ -125,6 +125,7 @@ saturate todo = runReader (go HashSet.empty [] todo) initEnv
               else go (HashSet.fromList hs <> seen) [f] (paused ++ hs ++ fs)
 
     step :: Formula -> LogicT (Reader ResolveEnv) Formula
+    step (Atom tm) = 
     step (Clause xs body head) = local
       ( \env -> env {resolveScope = mkScope xs <> resolveScope env}
       )

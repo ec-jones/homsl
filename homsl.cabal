@@ -9,7 +9,7 @@ library
   exposed-modules:  HoMSL.Syntax,
                     HoMSL.Resolve,
 
-  other-modules:
+  -- other-modules:
 
   hs-source-dirs:   src
 

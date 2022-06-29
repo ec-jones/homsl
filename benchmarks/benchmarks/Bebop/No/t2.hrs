@@ -1,0 +1,28 @@
+%BEGING
+S = br (L1 (L1 (Not Check)) T) (L1 (L1 (Not Check)) F).
+T x y = x.
+F x y = y.
+Not k b = b (k F) (k T).
+Or k b1 b2 = b1 (k T) (k b2).
+Check x = x err ok.
+Bits g a b c k = Not (Nota k g a b c) a.
+Nota k g a b c nota = Not (Notb k g a b c nota) b.
+Notb k g a b c nota notb = Not (Notc k g a b c nota notb) c.
+Notc k g a b c nota notb notc = Or (Or k a) b c.
+NotaWas0 g a b c k = Bits g T b c k.
+NotbWas0 g a b c k = Bits g F T c k.
+NotcWas0 g a b c k = Bits g F F T k.
+WhichBitWas1 g a b c nota notb notc k = If nota (NotaWas0 g a b c) (If notb (NotbWas0 g a b c) (NotcWas0 g a b c)) k.
+WasAnyBit1 g k a b c nota notb notc orres = If orres (WhichBitWas1 g a b c nota notb notc) (App g) k.
+If b s t k = b (s k) (t k).
+App x k = k x.
+L1 k g = If g (Bits g F F F) (L2Twice g) (Not k).
+L1Twice g k = L1 (L1 k) g.
+L2Twice g k = L2 (L2 k) g.
+L2 k g = If g (Bits g F F F) (App g) (Not k).
+%ENDG
+
+%BEGINA
+q0 ok -> .
+q0 br -> q0 q0.
+%ENDA
