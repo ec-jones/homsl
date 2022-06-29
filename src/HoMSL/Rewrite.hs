@@ -58,8 +58,8 @@ rewrite ::
   forall s.
   (AtomType -> Memo Formula s Formula) ->
   Sequent -> Memo Formula s (Formula, Subst) 
--- rewrite _ sequent
---   | trace ("Goal: " ++ show sequent.consequent) False = undefined
+rewrite _ sequent
+  | trace ("Goal: " ++ show sequent.consequent) False = undefined
 rewrite table sequent@Sequent { .. } = 
   case consequent of
     Atom pfs@(App (Sym p) (Apps (Sym f) ss)) -> do
@@ -152,25 +152,29 @@ rewrite table sequent@Sequent { .. } =
       (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Left f))
       -- traceM ("Selected: " ++ show (Clause ys (Atom head) body'))
       inst <- match ys head pfs
-      rewrite table sequent {consequent = Clause xs (subst inst body') body}
+      let head' = subst inst body'
+          xs' = filter (`IdEnv.member` freeVars head') xs
+      rewrite table sequent {consequent = Clause xs' head' (restrictBody xs' body)}
 
     Clause xs (Atom pxss@(App (Sym p) (Apps (Var x) ss))) body
-      | all (`notElem` xs) (freeVars pxss) ->
-        -- (Scope1)
-        pure (Atom pxss, mempty)
-
       | x `notElem` xs,
         all (`elem` map Var xs) ss,
         not (null ss) -> 
           -- Clause is already in the right form.
           pure (consequent, mempty)
 
+      | all (`notElem` xs) (freeVars pxss) ->
+        -- (Scope1)
+        rewrite table sequent { consequent = Atom pxss }
+
       | otherwise -> do
         -- (Imp/Refl/Step)
         (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Right x))
         -- traceM ("Selected: " ++ show (Clause xs (Atom head) body))
         inst <- match ys head pxss
-        rewrite table sequent {consequent = Clause xs (subst inst body') body}
+        let head' = subst inst body'
+            xs' = filter (`IdEnv.member` freeVars head') xs
+        rewrite table sequent {consequent = Clause xs' head' (restrictBody xs' body)}
 
     Clause _ _ _ -> error ("Unexpected clause head in body: " ++ show consequent)
 
