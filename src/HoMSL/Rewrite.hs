@@ -93,7 +93,7 @@ step table sequent@Sequent {..} =
       inst <- match xs head pfs
 
       -- traceM ("Selected1: " ++ show (Clause xs (Atom head) body))
-      pure (subst inst body, mempty)
+      step table sequent { consequent = subst inst body }
     Atom px@(App (Sym p) (Var x))
       | Just (_, True) <- IdEnv.lookup x variables -> do
           -- (ExInst/Step)
@@ -133,7 +133,7 @@ step table sequent@Sequent {..} =
               head' = App (Sym p) (Apps (Var x) (map Var ys'))
 
           -- traceM ("Selected3: " ++ show (Clause xs (Atom head) body))
-          pure (Conj [subst inst body', Clause ys' (Atom head') body'], mempty)
+          step table sequent { consequent = Conj [subst inst body', Clause ys' (Atom head') body'] }
     Atom _ -> error "Invalid atom in sequent!"
     Conj [] -> pure (Conj [], mempty)
     Conj (fm : fms) -> do
@@ -168,7 +168,7 @@ step table sequent@Sequent {..} =
         inst <- match ys head pfs
 
         -- traceM ("Selected4: " ++ show (Clause ys (Atom head) body'))
-        pure (Clause xs (subst inst body') body, mempty)
+        step table sequent { consequent = Clause xs (subst inst body') body }
     Clause xs (Atom pxss@(App (Sym p) (Apps (Var x) ss))) body
       | not (isAutomatonBody xs body) -> error "Non automaton body!"
       | x `elem` xs -> do
@@ -176,12 +176,11 @@ step table sequent@Sequent {..} =
           (ys, head, body') <- selectClause (ClauseSet.fromFormula body) (Shallow p (Right x))
           inst <- match ys head pxss
 
-          -- traceM ("Subgoal: " ++ show consequent)
           -- traceM ("Selected5: " ++ show (Clause ys (Atom head) body'))
-          pure (Clause xs (subst inst body') body, mempty)
+          step table sequent { consequent = Clause xs (subst inst body') body }
       | all (`notElem` xs) (freeVars pxss) ->
           -- (Scope1)
-          pure (Atom pxss, mempty)
+          step table sequent { consequent = Atom pxss }
       | all (`elem` map Var xs) ss ->
           pure (Clause xs (Atom pxss) body, mempty)
   where
