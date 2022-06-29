@@ -174,7 +174,6 @@ flattenConj (fs, fvs) (g : gs) =
     gs
 
 -- | A universally quantified clause.
--- Ensures xs appear in order in head.
 pattern Clause :: [Id] -> Formula -> Formula -> Formula
 pattern Clause xs head body <-
   Formula (Clause_ xs head body) _ _
