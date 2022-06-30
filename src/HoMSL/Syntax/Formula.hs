@@ -68,7 +68,8 @@ instance Eq Formula where
             eqAlphaTm fun fun' && eqAlphaTm arg arg'
           eqAlphaTm _ _ = False
       eqAlpha env (Conj fs) (Conj gs) =
-        all (uncurry (eqAlpha env)) (zip fs gs)
+        length fs == length gs &&
+          all (uncurry (eqAlpha env)) (zip fs gs)
       eqAlpha (envl, envr) (Clause xs head body) (Clause xs' head' body') =
         let envl' = shift xs envl
             envr' = shift xs' envr

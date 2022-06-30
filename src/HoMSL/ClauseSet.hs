@@ -98,7 +98,7 @@ data Pattern
   deriving stock (Eq, Show, Generic)
   deriving anyclass (Hashable)
 
--- | Lookup formula with the given head.
+-- | Lookup a definite clause with the given head.
 lookup :: MonadPlus m => Pattern -> ClauseSet -> m Formula
 lookup (Global p f) (ClauseSet cs) =
   case HashMap.lookup p cs of
