@@ -3,76 +3,67 @@
 
 module HoMSL.Rewrite where
 
-import Control.Monad.Memoization
 import Control.Monad
+import Control.Monad.Memoization
 import Control.Monad.ST
-import Control.Applicative
 import Data.Foldable
 import qualified Data.List as List
-import Debug.Trace
 import qualified HoMSL.ClauseSet as ClauseSet
-import qualified Data.HashSet as HashSet
 import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax
 
 -- | Find all automaton clauses with a given head symbol.
-saturateClauses :: ClauseSet.ClauseSet -> String -> [Formula]
-saturateClauses prog p = runST $ mdo
+saturateClauses :: ClauseSet.ClauseSet -> ClauseSet.Pattern -> [Formula]
+saturateClauses prog pattern = runST $ mdo
   -- Table of automaton clauses.
-  table <- memo $ \p -> do
-    clause <- ClauseSet.lookup p prog
+  table <- memo $ \pattern -> do
+    clause <- ClauseSet.lookup pattern prog
     rewrite clause
 
   -- Iteratively rewrite the body of a clause.
-  rewrite <- memo $ \clause ->
+  rewrite <- memo $ \clause -> do
     if isAutomaton clause
       then pure clause
       else do
-        let (xs, head, body) = viewClause clause
+        let (xs, head, body) = ClauseSet.viewClause clause
         body' <- step table (mkScope xs) body
         rewrite (Clause xs (Atom head) body')
 
-  runMemo (table p)
+  runMemo (table pattern)
 
--- | Make at least one reduction step if possible.
-step :: forall s. (String -> Memo Formula s Formula) -> Scope -> Formula -> Memo Formula s Formula
+-- | Conservatively, make as many reduction steps as possible.
+step :: forall s. (ClauseSet.Pattern -> Memo Formula s Formula) -> Scope -> Formula -> Memo Formula s Formula
 step table scope = fmap fst . go (mkScope [])
   where
     go :: Scope -> Formula -> Memo Formula s (Formula, Subst)
     go existentials (Atom tm@(App (Sym p) (Apps (Sym f) ss))) = do
       -- (Step)
-      (xs, head, body) <- viewClause <$> table p
+      (xs, head, body) <- ClauseSet.viewClause <$> table (ClauseSet.Global p f)
       inst <- match xs head tm
       go existentials (subst inst body)
     go existentials goal@(Atom (App (Sym p) (Var x)))
       | x `IdEnv.member` existentials = do
           -- (ExInst/Step)
-          (xs, head@(Apps f _), body) <- viewClause <$> table p
+          (xs, head@(Apps f _), body) <- ClauseSet.viewClause <$> table (ClauseSet.Assm p [])
 
           -- Create fresh instance
           let (_, xs') = uniqAways scope xs
               rho = mkRenaming (zip xs xs')
 
-          -- Don't include fresh existentials to prevent cycles.
+          -- Omit fresh existentials to break loops
           (body', theta) <- go existentials (subst rho body)
           pure (body', mkSubst [(x, Apps f (fmap Var xs'))] <> theta)
-      | otherwise = 
-        pure (goal, mkSubst [])
+      | otherwise =
+          pure (goal, mkSubst [])
     go existentials (Atom (App (Sym p) (Apps (Var x) ss)))
       | x `IdEnv.member` existentials =
           error "Higher-order existentials are not yet supported!"
       | otherwise = do
           -- (Assm)
-          (xs, head, body) <- viewClause <$> table p
+          (xs, head, body) <- ClauseSet.viewClause <$> table (ClauseSet.Assm p (sortArgs (idSort x)))
 
           -- Split variables into those that are partially applied
           let (zs, ys) = List.splitAt (length xs - length ss) xs
-
-          -- Ensure valid partial application, x -> p zs.
-          guard
-            ( length ys == length ss
-                && sortArgs (idSort x) == fmap idSort ys
-            )
 
           -- Create fresh instance.
           let (_, ys') = uniqAways scope ys
@@ -83,12 +74,11 @@ step table scope = fmap fst . go (mkScope [])
               body' = restrictBody ys' (subst rho body)
               head' = App (Sym p) (Apps (Var x) (map Var ys'))
 
-          go existentials (Conj [subst inst body', Clause ys' (Atom head') body'])
+          pure (Conj [subst inst body', Clause ys' (Atom head') body'], mkSubst [])
     go existentials (Conj []) = pure (Conj [], mkSubst [])
     go existentials (Conj (fm : fms)) = do
-      -- (AndL/R)
       (fm', theta) <- go existentials fm
-      (fms', theta') <- go existentials (Conj (fmap (subst theta) fms))
+      (fms', theta') <- go existentials (Conj (subst theta <$> fms))
       pure (Conj [fm', fms'], theta <> theta')
     go existentials (Exists x body) = do
       -- (ExInst)
@@ -102,7 +92,7 @@ step table scope = fmap fst . go (mkScope [])
           pure (foldl' (flip Exists) body' xs, deleteSubst [x] theta)
     go existentials (Clause xs (Atom tm@(App (Sym p) (Apps (Sym f) ss))) body) = do
       -- (Imp/Step)
-      (ys, head, body') <- viewClause <$> table p
+      (ys, head, body') <- ClauseSet.viewClause <$> table (ClauseSet.Global p f)
       inst <- match ys head tm
 
       go existentials (weaken $ Clause xs (subst inst body') body)
@@ -111,11 +101,11 @@ step table scope = fmap fst . go (mkScope [])
           error "Higher-order existentials are not yet supported!"
       | x `elem` xs = do
           -- (Imp/Refl/Step)
-          (ys, head, body') <- viewClause <$> ClauseSet.lookup p (ClauseSet.fromList [body])
+          (ys, head, body') <- ClauseSet.viewClause <$> ClauseSet.lookup (ClauseSet.Local p x) (ClauseSet.fromList [body])
           inst <- match ys head tm
 
           go existentials (weaken $ Clause xs (subst inst body') body)
-      | all (\s -> any (\x -> s == Var x) xs) ss =
+      | map Var xs == ss =
           pure (goal, mkSubst [])
       | otherwise =
           -- (Assm)

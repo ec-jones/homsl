@@ -1,7 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
 
--- \* HoRS Syntax and convertion to HoMSL
+-- | HoRS Syntax and convertion to HoMSL
 module HoRS.Syntax
   ( -- * Syntax
     Transition (..),

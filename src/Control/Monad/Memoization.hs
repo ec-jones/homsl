@@ -22,7 +22,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Hashable
 import Data.STRef
-import Debug.Trace
 
 -- * Memoization monad.
 
@@ -61,7 +60,7 @@ liftST = Memo . lift
 
 -- | Memoize a non-deterministic function.
 memo ::
-  (Show a, Show b, Hashable a, Hashable b) =>
+  (Hashable a, Hashable b) =>
   (a -> Memo b s b) ->
   ST s (a -> Memo b s b)
 memo f = do

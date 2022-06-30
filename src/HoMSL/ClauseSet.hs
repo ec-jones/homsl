@@ -1,6 +1,6 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module HoMSL.ClauseSet
@@ -8,31 +8,35 @@ module HoMSL.ClauseSet
     ClauseSet (..),
     null,
     insert,
-    lookup,
     member,
-    partition,
     fromList,
     toList,
+
+    -- * Queries
+    Pattern (..),
+    lookup,
+    viewClause,
   )
 where
 
-import Debug.Trace
 import Control.Applicative
+import Control.DeepSeq
+import Control.Monad
 import Data.Foldable hiding (null, toList)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.Maybe
 import Data.Hashable
+import qualified Data.List as List
+import Data.Maybe
 import GHC.Generics
 import HoMSL.Syntax
-import Control.DeepSeq
 import Prelude hiding (lookup, null)
 
 -- | A collection of definite clauses grouped by predicate.
 newtype ClauseSet = ClauseSet
   { getClauses :: HashMap.HashMap String (HashSet.HashSet Formula)
   }
-  deriving newtype NFData
+  deriving newtype (NFData)
 
 instance Semigroup ClauseSet where
   ClauseSet cs <> ClauseSet cs' =
@@ -59,7 +63,7 @@ insert :: Formula -> ClauseSet -> ClauseSet
 insert (Conj fs) cs = foldl' (flip insert) cs fs
 insert fm@((Atom (App (Sym p) _))) (ClauseSet cs) =
   ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) p cs)
-insert fm@(Clause xs (Atom (App (Sym p) _)) body) (ClauseSet cs) = 
+insert fm@(Clause xs (Atom (App (Sym p) _)) body) (ClauseSet cs) =
   ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) p cs)
 insert _ _ = error "Formula is not a clause!"
 
@@ -75,20 +79,6 @@ member fm@(Clause _ (Atom (App (Sym p) _)) _) (ClauseSet cs) =
     Just fms -> fm `HashSet.member` fms
 member _ _ = error "Formula is not a clause!"
 
--- | Lookup formula with the given head.
-lookup :: Alternative m =>  String -> ClauseSet -> m Formula
-lookup p (ClauseSet cs) =
-  case HashMap.lookup p cs of
-    Nothing -> empty
-    Just ys ->
-      asum [ pure clause | clause <- HashSet.toList ys ]
-
--- | Partition a clause set according to a predicate.
-partition :: (Formula -> Bool) -> ClauseSet -> (ClauseSet, ClauseSet)
-partition p (ClauseSet cs) =
-  (ClauseSet (HashSet.filter p <$> cs),
-    ClauseSet (HashSet.filter p <$> cs))
-
 -- | Create a set of clause set from a list of formulas.
 -- N.B. This function fails if any formula is not a (possibly degenerate) clause.
 fromList :: [Formula] -> ClauseSet
@@ -97,3 +87,51 @@ fromList = foldl' (flip insert) mempty
 -- | Enumerate clauses in a clause set.
 toList :: ClauseSet -> [Formula]
 toList (ClauseSet cs) = foldMap HashSet.toList cs
+
+-- * Queries
+
+-- | A condition placed upon clause heads.
+data Pattern
+  = Global String String
+  | Local String Id
+  | Assm String [Sort]
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (Hashable)
+
+-- | Lookup formula with the given head.
+lookup :: MonadPlus m => Pattern -> ClauseSet -> m Formula
+lookup (Global p f) (ClauseSet cs) =
+  case HashMap.lookup p cs of
+    Nothing -> mzero
+    Just clauses -> do
+      clause <- msum [pure clause | clause <- HashSet.toList clauses]
+      let (xs, head, body) = viewClause clause
+      case head of
+        App _ (Apps (Sym f') _)
+          | f == f' -> pure clause
+        nonX -> mzero
+lookup (Local p x) (ClauseSet cs) =
+  case HashMap.lookup p cs of
+    Nothing -> mzero
+    Just clauses -> do
+      clause <- msum [pure clause | clause <- HashSet.toList clauses]
+      let (xs, head, body) = viewClause clause
+      case head of
+        App _ (Apps (Var x') _)
+          | x == x' -> pure clause
+        nonX -> mzero
+lookup (Assm p sortArgs) (ClauseSet cs) =
+  case HashMap.lookup p cs of
+    Nothing -> mzero
+    Just clauses -> do
+      clause <- msum [pure clause | clause <- HashSet.toList clauses]
+      let (xs, head, body) = viewClause clause
+          (_, ys) = List.splitAt (length xs - length sortArgs) xs
+      guard (fmap idSort ys == sortArgs)
+      pure clause
+
+-- | View a formula as a clause.
+viewClause :: Formula -> ([Id], Term Id, Formula)
+viewClause (Atom tm) = ([], tm, Conj [])
+viewClause (Clause xs (Atom tm) body) = (xs, tm, body)
+viewClause nonClause = error ("Non-clause in clause set: " ++ show nonClause)

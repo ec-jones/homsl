@@ -63,7 +63,7 @@ data Sort
   | -- | Function arrow
     Sort :-> Sort
   deriving stock (Eq, Generic, Show)
-  deriving anyclass NFData
+  deriving anyclass (Hashable, NFData)
 
 infixr 0 :->
 

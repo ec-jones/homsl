@@ -20,7 +20,6 @@ module HoMSL.Syntax
     pattern Conj,
     pattern Clause,
     pattern Exists,
-    viewClause,
 
     -- * Parser
     parseProgram,

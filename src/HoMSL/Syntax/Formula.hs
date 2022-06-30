@@ -12,7 +12,6 @@ module HoMSL.Syntax.Formula
     pattern Conj,
     pattern Exists,
     pattern Clause,
-    viewClause
   )
 where
 
@@ -70,11 +69,11 @@ instance Eq Formula where
           eqAlphaTm _ _ = False
       eqAlpha env (Conj fs) (Conj gs) =
         all (uncurry (eqAlpha env)) (zip fs gs)
-      eqAlpha (envl, envr) (Clause xs body head) (Clause xs' body' head') =
+      eqAlpha (envl, envr) (Clause xs head body) (Clause xs' head' body') =
         let envl' = shift xs envl
             envr' = shift xs' envr
-         in eqAlpha (envl', envr') body body'
-              && eqAlpha (envl', envr') head head'
+         in eqAlpha (envl', envr') head head'
+              && eqAlpha (envl', envr') body body'
       eqAlpha (envl, envr) (Exists x body) (Exists x' body') =
         let envl' = shift [x] envl
             envr' = shift [x'] envr
@@ -174,11 +173,14 @@ flattenConj (fs, fvs) (g : gs) =
     gs
 
 -- | A universally quantified clause.
+-- N.B. All universally quantified variables must appear in the head.
 pattern Clause :: [Id] -> Formula -> Formula -> Formula
 pattern Clause xs head body <-
   Formula (Clause_ xs head body) _ _
   where
-    Clause [] head (Conj []) = head
+    Clause [] head (Conj []) = 
+      -- Trivial clause
+      head
     Clause xs (Conj heads) body =
       -- (ImpAnd)
       Conj [Clause xs head body | head <- heads]
@@ -217,12 +219,6 @@ pattern Exists x body <-
               formulaHash = hashExists x (formulaHash body)
             }
       | otherwise = body
-
--- | View a formula as a clause.
-viewClause :: Formula -> ([Id], Term Id, Formula)
-viewClause (Atom tm) = ([], tm, Conj [])
-viewClause (Clause xs (Atom tm) body) = (xs, tm, body)
-viewClause nonClause = error ("Non-clause in clause set: " ++ show nonClause)
 
 -- * Hash Combinators
 
