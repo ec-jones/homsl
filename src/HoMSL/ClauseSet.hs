@@ -55,9 +55,13 @@ null (ClauseSet cs) =
   all HashSet.null cs
 
 -- | Insert a formula into the clause set.
-insert :: String -> Formula -> ClauseSet -> ClauseSet
-insert p fm (ClauseSet cs) =
+insert :: Formula -> ClauseSet -> ClauseSet
+insert (Conj fs) cs = foldl' (flip insert) cs fs
+insert fm@((Atom (App (Sym p) _))) (ClauseSet cs) =
   ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) p cs)
+insert fm@(Clause xs (Atom (App (Sym p) _)) body) (ClauseSet cs) = 
+  ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) p cs)
+insert _ _ = error "Formula is not a clause!"
 
 -- | Check if the formula appears in the clause set.
 member :: Formula -> ClauseSet -> Bool
@@ -69,6 +73,7 @@ member fm@(Clause _ (Atom (App (Sym p) _)) _) (ClauseSet cs) =
   case HashMap.lookup p cs of
     Nothing -> False
     Just fms -> fm `HashSet.member` fms
+member _ _ = error "Formula is not a clause!"
 
 -- | Lookup formula with the given head.
 lookup :: Alternative m =>  String -> ClauseSet -> m Formula
@@ -87,13 +92,7 @@ partition p (ClauseSet cs) =
 -- | Create a set of clause set from a list of formulas.
 -- N.B. This function fails if any formula is not a (possibly degenerate) clause.
 fromList :: [Formula] -> ClauseSet
-fromList = foldl' go mempty
-  where
-    go :: ClauseSet -> Formula -> ClauseSet
-    go cs (Conj fs) = foldl' go cs fs
-    go cs fm@((Atom (App (Sym p) _))) = insert p fm cs
-    go cs fm@(Clause xs (Atom (App (Sym p) _)) body) = insert p fm cs
-    go cs _ = error "Formula is not a clause!"
+fromList = foldl' (flip insert) mempty
 
 -- | Enumerate clauses in a clause set.
 toList :: ClauseSet -> [Formula]

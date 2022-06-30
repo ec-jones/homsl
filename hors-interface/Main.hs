@@ -79,13 +79,15 @@ main = pure () -- do
 -- isYes False = error "Benchmark failed!"
 
 -- | Run a specific benchmark.
-runBenchmark :: FilePath -> IO [Formula]
+runBenchmark :: FilePath -> IO Bool
 runBenchmark path = do
   input <- readBenchmark path
   pure (satisfiable input)
 
-satisfiable :: ClauseSet.ClauseSet -> [Formula]
-satisfiable cs = saturateClauses cs "q0"
+satisfiable :: ClauseSet.ClauseSet -> Bool
+satisfiable cs = 
+  Atom (App (Sym "q0") (Sym "S")) 
+    `elem` saturateClauses cs "q0"
 
 -- | Read all .hrs problems in a benchmark group.
 readBenchmarks :: String -> IO [(FilePath, ClauseSet.ClauseSet)]

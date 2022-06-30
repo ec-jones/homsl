@@ -190,7 +190,7 @@ pattern Clause xs head body <-
     Clause _ (Exists _ _) _ = error "Non-horn clause!"
     Clause xs head@(Atom tm) body =
       -- Order variables as they appear in the head.
-      let xs' = toList tm
+      let xs' = toList tm `List.intersect` xs
        in Formula
             { formulaShape = Clause_ xs' head body,
               formulaFreeVars = IdEnv.deleteMany xs' (IdEnv.freeVars body <> IdEnv.freeVars head),
@@ -222,7 +222,7 @@ pattern Exists x body <-
 viewClause :: Formula -> ([Id], Term Id, Formula)
 viewClause (Atom tm) = ([], tm, Conj [])
 viewClause (Clause xs (Atom tm) body) = (xs, tm, body)
-viewClause nonClause = error "Non-clause in clause set!"
+viewClause nonClause = error ("Non-clause in clause set: " ++ show nonClause)
 
 -- * Hash Combinators
 
