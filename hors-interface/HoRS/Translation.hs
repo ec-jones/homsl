@@ -25,7 +25,7 @@ horsToHoMSL rules trans =
 -- | Make a transition clause.
 mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> ClauseSet.ClauseSet
 mkTransitionClause env (Transition q f rhs) =
-  ClauseSet.ClauseSet $ HashMap.singleton (Shallow q (Left f)) (HashSet.singleton getFormula)
+  ClauseSet.ClauseSet $ HashMap.singleton q (HashSet.singleton getFormula)
   where
     getFormula :: Formula
     getFormula =
@@ -45,7 +45,7 @@ mkTransitionClause env (Transition q f rhs) =
 mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> ClauseSet.ClauseSet
 mkRuleClauses qs env (Rule f xs rhs) =
   ClauseSet.ClauseSet $
-    HashMap.fromListWith HashSet.union [(Shallow q (Left f), HashSet.singleton (getFormula q)) | q <- qs]
+    HashMap.fromListWith HashSet.union [(q, HashSet.singleton (getFormula q)) | q <- qs]
   where
     getFormula :: String -> Formula
     getFormula q =

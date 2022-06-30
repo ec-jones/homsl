@@ -18,9 +18,6 @@ module HoMSL.Syntax.Term
     -- * Terms
     Term (..),
     pattern Apps,
-    AtomType (..),
-    funSymbol,
-    isVar,
   )
 where
 
@@ -77,7 +74,7 @@ sortArgs O = []
 sortArgs (s :-> t) =
   s : sortArgs t
 
--- | Does the sort ultimately return a proposition.
+-- | Does the sort ultimately return a proposition?
 isPredicate :: Sort -> Bool
 isPredicate I = False
 isPredicate O = True
@@ -105,17 +102,6 @@ instance Show a => Show (Term a) where
       showsPrec 11 fun
         . foldl' (\k arg -> k . showString " " . showsPrec 11 arg) id args
 
-
--- | Types of terms.
-data AtomType 
-  = Flat String
-  | Shallow String (Either String Id)
-  deriving stock (Eq, Show, Generic)
-  deriving anyclass (Hashable, NFData)
-
--- viewAtomType :: Term -> AtomType
--- viewAtomType
-
 {-# COMPLETE Apps #-}
 
 -- | Terms in spinal form.
@@ -131,13 +117,4 @@ viewApps (Var x) = (Var x, [])
 viewApps (Sym f) = (Sym f, [])
 viewApps (App fun arg) =
   let (fun', args) = viewApps fun
-   in (fun', arg : args)
-
--- | Identify the function symbol (or prediate) at the head of a term.
-funSymbol :: Term a -> Maybe String
-funSymbol (Apps (Sym f) _) = Just f
-funSymbol _ = Nothing
-
-isVar :: Term a -> Bool
-isVar (Var x) = True
-isVar _ = False
+   in (fun', arg : args)  

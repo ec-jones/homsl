@@ -9,14 +9,16 @@ module HoMSL.ClauseSet
     null,
     insert,
     lookup,
-    fromFormula,
-    fromFormulaList,
-    toFormula,
+    member,
+    partition,
+    fromList,
+    toList,
   )
 where
 
 import Debug.Trace
-import Data.Foldable hiding (null)
+import Control.Applicative
+import Data.Foldable hiding (null, toList)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Maybe
@@ -26,9 +28,9 @@ import HoMSL.Syntax
 import Control.DeepSeq
 import Prelude hiding (lookup, null)
 
--- | A collection of clauses grouped by head.
+-- | A collection of definite clauses grouped by predicate.
 newtype ClauseSet = ClauseSet
-  { getClauses :: HashMap.HashMap AtomType (HashSet.HashSet Formula)
+  { getClauses :: HashMap.HashMap String (HashSet.HashSet Formula)
   }
   deriving newtype NFData
 
@@ -53,50 +55,46 @@ null (ClauseSet cs) =
   all HashSet.null cs
 
 -- | Insert a formula into the clause set.
-insert :: AtomType -> Formula -> ClauseSet -> ClauseSet
-insert head fm (ClauseSet cs) =
-  ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) head cs)
+insert :: String -> Formula -> ClauseSet -> ClauseSet
+insert p fm (ClauseSet cs) =
+  ClauseSet (HashMap.alter (Just . HashSet.insert fm . fromMaybe HashSet.empty) p cs)
+
+-- | Check if the formula appears in the clause set.
+member :: Formula -> ClauseSet -> Bool
+member fm@(Atom (App (Sym p) _)) (ClauseSet cs) =
+  case HashMap.lookup p cs of
+    Nothing -> False
+    Just fms -> fm `HashSet.member` fms
+member fm@(Clause _ (Atom (App (Sym p) _)) _) (ClauseSet cs) =
+  case HashMap.lookup p cs of
+    Nothing -> False
+    Just fms -> fm `HashSet.member` fms
 
 -- | Lookup formula with the given head.
--- N.B. Looking up a flat atom returns all /shallow clauses/.
-lookup :: AtomType -> ClauseSet -> [Formula]
-lookup (Flat p) (ClauseSet cs) = 
-  HashMap.foldMapWithKey (\head clauses -> 
-      case head of
-        Shallow p' _
-          | p == p' -> HashSet.toList clauses
-        _ -> []
-  ) cs
-lookup head (ClauseSet cs) =
-  case HashMap.lookup head cs of
-    Nothing -> []
-    Just ys -> HashSet.toList ys
+lookup :: Alternative m =>  String -> ClauseSet -> m Formula
+lookup p (ClauseSet cs) =
+  case HashMap.lookup p cs of
+    Nothing -> empty
+    Just ys ->
+      asum [ pure clause | clause <- HashSet.toList ys ]
 
--- | Create a clause set from a list of formulas.
-fromFormulaList :: [Formula] -> ClauseSet
-fromFormulaList = foldl' go mempty
+-- | Partition a clause set according to a predicate.
+partition :: (Formula -> Bool) -> ClauseSet -> (ClauseSet, ClauseSet)
+partition p (ClauseSet cs) =
+  (ClauseSet (HashSet.filter p <$> cs),
+    ClauseSet (HashSet.filter p <$> cs))
+
+-- | Create a set of clause set from a list of formulas.
+-- N.B. This function fails if any formula is not a (possibly degenerate) clause.
+fromList :: [Formula] -> ClauseSet
+fromList = foldl' go mempty
   where
     go :: ClauseSet -> Formula -> ClauseSet
     go cs (Conj fs) = foldl' go cs fs
-    go cs fm@((Atom (App (Sym p) (Apps (Sym f) _)))) =
-      insert (Shallow p (Left f)) fm cs
-    go cs fm@(Clause xs (Atom (App (Sym p) (Apps (Sym f) _))) body) =
-      insert (Shallow p (Left f)) fm cs
-    go cs fm@(Clause xs (Atom (App (Sym p) (Apps (Var x) _))) body) =
-      insert (Shallow p (Right x)) fm cs
-    go cs fm@(Atom (App (Sym p) (Apps (Var x) _))) =
-      insert (Shallow p (Right x)) fm cs
-    go cs fm@(Clause xs (Atom (App (Sym p) _)) body) =
-      insert (Flat p) fm cs
-    go cs fm@(Atom (App (Sym p) _)) =
-      insert (Flat p) fm cs
-    go cs _ = error "Invalid clause head!"
+    go cs fm@((Atom (App (Sym p) _))) = insert p fm cs
+    go cs fm@(Clause xs (Atom (App (Sym p) _)) body) = insert p fm cs
+    go cs _ = error "Formula is not a clause!"
 
--- | Create a clause set from a body.
-fromFormula :: Formula -> ClauseSet
-fromFormula fm = fromFormulaList [fm]
-
--- | Convert a clause set into a single formula.
-toFormula :: ClauseSet -> Formula
-toFormula (ClauseSet cs) = 
-  Conj $ foldMap HashSet.toList cs
+-- | Enumerate clauses in a clause set.
+toList :: ClauseSet -> [Formula]
+toList (ClauseSet cs) = foldMap HashSet.toList cs

@@ -13,9 +13,6 @@ module HoMSL.Syntax
     -- * Terms
     Term (..),
     pattern Apps,
-    AtomType (..),
-    funSymbol,
-    isVar,
 
     -- * Formulas
     Formula,

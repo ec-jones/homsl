@@ -12,7 +12,7 @@ module HoMSL.Syntax.Formula
     pattern Conj,
     pattern Exists,
     pattern Clause,
-    viewClause,
+    viewClause
   )
 where
 
@@ -178,6 +178,7 @@ pattern Clause :: [Id] -> Formula -> Formula -> Formula
 pattern Clause xs head body <-
   Formula (Clause_ xs head body) _ _
   where
+    Clause [] head (Conj []) = head
     Clause xs (Conj heads) body =
       -- (ImpAnd)
       Conj [Clause xs head body | head <- heads]
@@ -186,12 +187,15 @@ pattern Clause xs head body <-
       let (_, ys') = IdEnv.uniqAways (IdEnv.mkScope xs) ys
           rho = IdEnv.mkRenaming (zip ys ys')
        in Clause (xs ++ ys') (IdEnv.subst rho head') (Conj [body, IdEnv.subst rho body'])
-    Clause xs head body =
-      Formula
-        { formulaShape = Clause_ xs head body,
-          formulaFreeVars = IdEnv.deleteMany xs (IdEnv.freeVars body <> IdEnv.freeVars head),
-          formulaHash = hashClause xs (formulaHash head) (formulaHash body)
-        }
+    Clause _ (Exists _ _) _ = error "Non-horn clause!"
+    Clause xs head@(Atom tm) body =
+      -- Order variables as they appear in the head.
+      let xs' = toList tm
+       in Formula
+            { formulaShape = Clause_ xs' head body,
+              formulaFreeVars = IdEnv.deleteMany xs' (IdEnv.freeVars body <> IdEnv.freeVars head),
+              formulaHash = hashClause xs' (formulaHash head) (formulaHash body)
+            }
 
 -- | An existential quantification.
 pattern Exists :: Id -> Formula -> Formula
@@ -214,11 +218,11 @@ pattern Exists x body <-
             }
       | otherwise = body
 
--- | Unpack a formula as a definite clause.
+-- | View a formula as a clause.
 viewClause :: Formula -> ([Id], Term Id, Formula)
 viewClause (Atom tm) = ([], tm, Conj [])
 viewClause (Clause xs (Atom tm) body) = (xs, tm, body)
-viewClause nonClause = error "Formula is not a clause!"
+viewClause nonClause = error "Non-clause in clause set!"
 
 -- * Hash Combinators
 
