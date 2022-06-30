@@ -12,7 +12,6 @@ import HoRS.Translation
 import HoRS.Syntax
 import HoMSL.Syntax
 import Control.DeepSeq
-import Debug.Trace
 
 main :: IO ()
 main = do
@@ -71,12 +70,12 @@ main = do
     ]
 
 -- | Verify the output of the benchmark is as expected.
-isNo, isYes :: Bool -> ()
-isNo True = ()
-isNo False = error "Benchmark failed!"
+isNo, isYes :: [Formula] -> ()
+isNo [] = ()
+isNo _ = error "Benchmark failed!"
 
-isYes False = ()
-isYes True = error "Benchmark failed!"
+isYes [] = error "Benchmark failed!"
+isYes _ = ()
 
 -- | Read all .hrs problems in a benchmark group.
 readBenchmarks :: String -> IO [(FilePath, ClauseSet.ClauseSet)]
@@ -94,13 +93,13 @@ readBenchmark path =  do
   pure (horsToHoMSL rules trans)
 
 -- | Run a specific benchmark.
-runBenchmark :: FilePath -> IO Bool
+runBenchmark :: FilePath -> IO [Formula]
 runBenchmark path = do
   input <- readBenchmark path
   pure (satisfiable input)
 
 -- | Check if a clause set is satisfiable with the goal clause:
 --    false <= q0 S.
-satisfiable :: ClauseSet.ClauseSet -> Bool
+satisfiable :: ClauseSet.ClauseSet -> [Formula]
 satisfiable cs =
-  null $ saturateClauses cs (ClauseSet.Global "q0" "S")
+  saturateClauses cs (ClauseSet.Global "q0" "S")

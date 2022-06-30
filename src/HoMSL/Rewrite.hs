@@ -134,7 +134,7 @@ match xs = go (mkSubst [])
       go theta' arg arg'
     go _ _ _ = mzero
 
--- | Check that the given formula is an automaton clause.
+-- | Check that the given formula is a top-level automaton clause.
 isAutomaton :: Formula -> Bool
 isAutomaton (Atom (App (Sym p) (Sym f))) = True
 isAutomaton (Atom _) = False
@@ -152,7 +152,7 @@ isAutomatonBody xs (Atom (App (Sym _) (Var x))) = x `elem` xs
 isAutomatonBody xs (Conj fms) = all (isAutomatonBody xs) fms
 isAutomatonBody xs (Clause ys (Atom (App (Sym p) (Apps (Var x) ss))) body) =
   x `elem` xs
-    && map Var xs == ss
+    && map Var ys == ss
     && isAutomatonBody ys body
 isAutomatonBody _ _ = False
 
