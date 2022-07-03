@@ -252,8 +252,10 @@ formulaToClause :: Formula -> Maybe AClause
 formulaToClause (Atom (App (Sym p) (Sym f))) =
   Just (AClause [] p (Sym f) (Conj []))
 formulaToClause (Clause xs (Atom (App (Sym p) arg@(Apps (Sym f) args))) body) = do
-  _ <- formulaToNestedClauses xs body
-  pure (AClause xs p arg body)
+  xs' <- mapM isMaybeVar args
+  guard (all (`elem` xs) xs')
+  _ <- formulaToNestedClauses xs' body
+  pure (AClause xs' p arg body)
 formulaToClause _ = Nothing
 
 -- | View a formula as a conjunction of nested automaton clauses.
