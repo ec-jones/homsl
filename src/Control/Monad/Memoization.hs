@@ -66,29 +66,23 @@ memo ::
 memo f = do
   ref <- newSTRef HashMap.empty
   pure $ \x ->
-        callCC $ \k -> do
-          table <- liftST $ readSTRef ref
-          let update e = liftST . writeSTRef ref . HashMap.insert x e
-          case HashMap.lookup x table of
-            Nothing -> do
-              -- Producer Node
-              -- traceM ("Producer: " ++ show x)
-
-              update (HashSet.empty, [k]) table
-              y <- f x
-              table' <- liftST $ readSTRef ref
-              case HashMap.lookup x table' of
-                Nothing -> error "Failed to create entry!"
-                Just (ys, ks)
-                  | y `HashSet.member` ys -> mzero
-                  | otherwise -> do
-                      -- traceM ("Produce: " ++ show y)
-                      update (HashSet.insert y ys, ks) table'
-                      msum [k' y | k' <- ks]
-            Just (ys, ks) -> do
-              -- Consumer Node
-              -- traceM ("Consume: " ++ show x)
-
-              update (ys, k : ks) table
-              msum [k y | y <- HashSet.toList ys]
-    
+    callCC $ \k -> do
+      table <- liftST $ readSTRef ref
+      let update e = liftST . writeSTRef ref . HashMap.insert x e
+      case HashMap.lookup x table of
+        Nothing -> do
+          -- Producer Node
+          update (HashSet.empty, [k]) table
+          y <- f x
+          table' <- liftST $ readSTRef ref
+          case HashMap.lookup x table' of
+            Nothing -> error "Failed to create entry!"
+            Just (ys, ks)
+              | y `HashSet.member` ys -> mzero
+              | otherwise -> do
+                  update (HashSet.insert y ys, ks) table'
+                  msum [k' y | k' <- ks]
+        Just (ys, ks) -> do
+          -- Consumer Node
+          update (ys, k : ks) table
+          msum [k y | y <- HashSet.toList ys]

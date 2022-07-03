@@ -17,61 +17,60 @@ import Debug.Trace
 
 saturate :: [Formula] -> HashSet.HashSet AClause
 saturate clauses = runST $ mdo
-  table <- memo $ \p -> table p <|> do
+  table <- memo $ \p -> do
     -- Select a clause defining the given predicate.
     clause <- asum [ pure clause | clause <- clauses, 
-                                  let (xs, head@(Apps (Sym p') _), body) = viewClause clause,
-                                  p == p' ]
-    traceM ("Rewriting: " ++ show clause)
+                                  let (xs, head@(App (Sym p') _), body) = viewClause clause,
+                                  p == p'
+                                  
+                    ]
 
-    -- Rewrite a clause to automaton form.
+    -- Rewrite the clause to automaton form.
     let (xs, head, body) = viewClause clause
-    body' <- rewrite xs table body
+    body' <- rewrite table xs body
     let clause' = Clause xs (Atom head) body'
-
     case formulaToClause clause' of
       Nothing -> 
-        error ("Reduct is non-automaton: " ++ show clause')
+        error ("Reduce is not automaton: " ++ show clause')
       Just aclause ->
         pure aclause
 
   runMemo (table "q0")
 
--- | Table of clauses grouped by head symbol.
-type Table f =
-  String -> Memo AClause f AClause
+-- | A table of clauses grouped by predicate.
+type Table s =
+  String -> Memo AClause s AClause
 
--- | Rewrite atoms in the body of a clause to an automaton formula.
+-- | Reduce a formula to automaton form.
 rewrite :: 
-  forall f.
+  forall s.
+  Table s -> -- ^ Table of results
   [Id] -> -- ^ Subjects of the formula.
-  Table f -> -- ^ Table of results
-    Formula -> -- ^ Body of a clause.
-      Memo AClause f Formula
-rewrite subjects = go (HashSet.fromList subjects)
+  Formula -> -- ^ Body of a clause.
+  Memo AClause s Formula
+rewrite table subjects fm =
+  go (HashSet.fromList subjects) (\_ -> empty) fm
   where
-    go :: Scope -> Table f -> Formula -> Memo AClause f Formula
-    go _ _ fm
-      | trace ("Step: " ++ show (subjects, fm)) False = undefined
-    go scope table (Atom (App (Sym p) arg@(Apps (Sym f) ss))) = do
+    go :: Scope -- ^ Variables in scope
+        -> Table s -- ^ Local clauses
+        -> Formula -- ^ Formula to rewrite
+        -> Memo AClause s Formula 
+    go scope locals (Atom (App (Sym p) arg@(Apps (Sym f) ss))) = do
       -- (Step)
-      clause@(AClause xs _ arg' body) <- table p
+      AClause xs _ arg' body <- table p
       inst <- match xs arg' arg
-      traceM ("Resolve with: " ++ show (clauseToFormula clause))
-      go scope table (subst inst body)
-    go scope table (Atom (App (Sym p) arg@(Var x)))
-      | x `elem` subjects = pure (Atom (App (Sym p) arg)) 
+      go scope locals (subst inst body)
+    go scope locals (Atom tm@(App (Sym p) arg@(Var x)))
+      | x `elem` subjects = pure (Atom tm)
       | otherwise = do
         -- (Refl)
-        clause@(AClause xs _ arg' body) <- table p
+        AClause xs _ arg' body <- locals p
         inst <- match xs arg' arg
-        traceM ("Resolve with: " ++ show (clauseToFormula clause))
-        go scope table (subst inst body)
-    go scope table (Atom (App (Sym p) arg@(Apps (Var x) ss)))
+        go scope locals (subst inst body)
+    go scope locals (Atom (App (Sym p) arg@(Apps (Var x) ss)))
       | x `elem` subjects = do
         -- (Assm)
-        clause@(AClause xs _ _ body) <- table p
-        traceM ("Resolve with: " ++ show (clauseToFormula clause))
+        clause@(AClause xs _ _ body) <- locals p <|> table p
 
         -- Drop partially applied variables.
         let ys = drop (length xs - length ss) xs
@@ -85,25 +84,25 @@ rewrite subjects = go (HashSet.fromList subjects)
         let inst = mkSubst (zip ys' ss)
             body' = subst rho (restrictBody ys body)
             head' = App (Sym p) (Apps (Var x) (map Var ys'))
-        go scope table (Conj [subst inst body', Clause ys' (Atom head') body'])
+
+        body'' <- go scope locals (subst inst body')
+        pure (Conj [body'', Clause ys' (Atom head') body'])
       | otherwise = do
         -- (Step)
-        clause@(AClause xs _ arg' body) <- table p
-        traceM ("Resolve with: " ++ show (clauseToFormula clause))
+        AClause xs _ arg' body <- locals p
         inst <- match xs arg' arg
-        go scope table (subst inst body) 
-    go scope table (Atom _) = error "Atom is not well-formed!"
-    go scope table (Conj []) = pure (Conj [])
-    go scope table (Conj (fm : fms)) = do
-      -- (AndL)
-      fm' <- go scope table fm
-      fms' <- go scope table (Conj fms)
+        go scope locals (subst inst body) 
+    go scope locals (Atom _) = error "Atom is not well-formed!"
+    go scope locals (Conj []) = pure (Conj [])
+    go scope locals (Conj (fm : fms)) = do
+      fm' <- go scope locals fm
+      fms' <- go scope locals (Conj fms)
       pure (Conj [fm', fms'])
-    go scope table (Exists _ _) = error "Existentials are not yet supported!"
-    go scope table (Clause xs head body)
-      | all (`notElem` xs) (freeVars head) =
+    go scope locals (Exists _ _) = error "Existentials are not yet supported!"
+    go scope locals (Clause xs head body)
+      | all (`notElem` xs) (freeVars head) = do
         -- (Scope1)
-        go scope table head
+        go scope locals head
       | Atom (App (Sym p) arg@(Apps (Var x) ss)) <- head,
         x `elem` subjects,
         all (`elem` map Var xs) ss = do
@@ -115,16 +114,17 @@ rewrite subjects = go (HashSet.fromList subjects)
               rho = mkRenaming (zip xs xs')
               body' = subst rho body
 
-              table' p = asum [ pure aclause | 
+              -- Extend local clauses with clauses from the body.
+              locals' p = asum [ pure aclause | 
                                       let Just clauses = formulaToNestedClauses xs' body',
-                                      aclause@(AClause _ p' _ _) <- HashSet.toList clauses,
+                                      aclause@(AClause _ p' (Apps (Var x') _) _) <- HashSet.toList clauses,
                                       p == p'
-                                  ] <|> table p
+                                  ] <|> locals p
 
-          head' <- go scope' table' (subst rho head)
-          if all (`notElem` xs) (freeVars head')
+          head' <- go scope' locals' (subst rho head)
+          if all (`notElem` xs') (freeVars head')
             then pure head'
-            else pure (Clause xs' head' body')
+            else empty -- pure (Clause xs' head' body')
 
 -- | @matchHead xs head tm@ finds instance of @head@ that matches @tm@ instantitates @xs@.
 -- N.B. The head is assumed to be shallow and linear.
