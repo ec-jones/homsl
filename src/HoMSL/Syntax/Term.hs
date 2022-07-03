@@ -1,11 +1,7 @@
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- | Identifiers, Sorts, and Terms.
+-- | The syntax and sorts of terms.
 module HoMSL.Syntax.Term
   ( -- * Identifiers
     Id (..),
@@ -18,39 +14,42 @@ module HoMSL.Syntax.Term
     -- * Terms
     Term (..),
     pattern Apps,
+    termHead,
+    isMaybeVar,
   )
 where
 
-import Control.DeepSeq
-import GHC.Generics
-import Data.Hashable
 import Data.Foldable
+import Data.Hashable
+import GHC.Generics
 
 -- * Identifiers
 
 -- | An identifier
 data Id = Id
   { -- | The original name.
-    idName :: !String,
+    name :: !String,
     -- | The sort of the identifier
-    idSort :: !Sort,
+    sort :: !Sort,
     -- | A unique used to avoid capture.
-    idUnique :: {-# UNPACK #-} !Int
+    unique :: {-# UNPACK #-} !Int
   }
-  deriving stock Generic
-  deriving anyclass NFData
 
 instance Eq Id where
   x == y =
-    idUnique x == idUnique y
+    x.unique == y.unique
+
+instance Ord Id where
+  x <= y =
+    x.unique <= y.unique
 
 instance Hashable Id where
   hashWithSalt s x =
-    hashWithSalt s (idUnique x)
+    hashWithSalt s x.unique
 
 instance Show Id where
   showsPrec _ x =
-    showString (idName x) . showString "_" . shows (idUnique x)
+    showString x.name . showString "_" . shows x.unique
 
 -- * Sorts
 
@@ -62,8 +61,8 @@ data Sort
     O
   | -- | Function arrow
     Sort :-> Sort
-  deriving stock (Eq, Generic, Show)
-  deriving anyclass (Hashable, NFData)
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (Hashable)
 
 infixr 0 :->
 
@@ -91,8 +90,22 @@ data Term a
     Sym String
   | -- | Application.
     App (Term a) (Term a)
-  deriving stock (Functor, Foldable, Traversable, Generic, Eq)
-  deriving anyclass (Hashable, NFData)
+  deriving stock (Eq, Functor, Foldable, Traversable, Generic)
+  deriving anyclass (Hashable)
+
+instance Applicative Term where
+  pure = Var
+
+  Var f <*> tm = fmap f tm
+  Sym f <*> tm = Sym f
+  App fun arg <*> tm =
+    App (fun <*> tm) (arg <*> tm)
+
+instance Monad Term where
+  Var x >>= k = k x
+  Sym f >>= k = Sym f
+  App fun arg >>= k =
+    App (fun >>= k) (arg >>= k)
 
 instance Show a => Show (Term a) where
   showsPrec _ (Var x) = shows x
@@ -112,9 +125,18 @@ pattern Apps fun args <-
     Apps fun args = foldl' App fun args
 
 -- | Collect the arguments to a term (in reverse order).
-viewApps :: Term  a-> (Term a, [Term a])
+viewApps :: Term a -> (Term a, [Term a])
 viewApps (Var x) = (Var x, [])
 viewApps (Sym f) = (Sym f, [])
 viewApps (App fun arg) =
   let (fun', args) = viewApps fun
-   in (fun', arg : args)  
+   in (fun', arg : args)
+
+-- | The variable of function symbol at the head of the term.
+termHead :: Term a -> Term a
+termHead (Apps f _) = f
+
+-- | Is the term just a variable.
+isMaybeVar :: Term a -> Maybe a
+isMaybeVar (Var x) = Just x
+isMaybeVar _ = Nothing

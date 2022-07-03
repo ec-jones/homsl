@@ -1,117 +1,130 @@
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
-module HoMSL.Rewrite where
+module HoMSL.Rewrite
+  ( saturate) where
 
-import Control.Monad
+import Control.Applicative
 import Control.Monad.Memoization
-import Control.Monad.ST
+import Control.Monad.RWS
 import Data.Foldable
-import qualified Data.List as List
-import qualified HoMSL.ClauseSet as ClauseSet
-import qualified HoMSL.IdEnv as IdEnv
+import Control.Monad.ST
+import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 import HoMSL.Syntax
+import Debug.Trace
 
--- | Find all automaton clauses with a given head symbol.
-saturateClauses :: ClauseSet.ClauseSet -> ClauseSet.Pattern -> [Formula]
-saturateClauses prog pattern = runST $ mdo
-  -- Table of automaton clauses.
-  table <- memo $ \pattern -> do
-    clause <- ClauseSet.lookup pattern prog
-    rewrite clause
+saturate :: [Formula] -> HashSet.HashSet AClause
+saturate clauses = runST $ mdo
+  table <- memo $ \p -> table p <|> do
+    -- Select a clause defining the given predicate.
+    clause <- asum [ pure clause | clause <- clauses, 
+                                  let (xs, head@(Apps (Sym p') _), body) = viewClause clause,
+                                  p == p' ]
+    traceM ("Rewriting: " ++ show clause)
 
-  -- Iteratively rewrite the body of a clause.
-  rewrite <- memo $ \clause -> do
-    if isAutomaton clause
-      then pure clause
-      else do
-        let (xs, head, body) = ClauseSet.viewClause clause
-        body' <- step table (mkScope xs) body
-        rewrite (Clause xs (Atom head) body')
+    -- Rewrite a clause to automaton form.
+    let (xs, head, body) = viewClause clause
+    body' <- rewrite xs table body
+    let clause' = Clause xs (Atom head) body'
 
-  runMemo (table pattern)
+    case formulaToClause clause' of
+      Nothing -> 
+        error ("Reduct is non-automaton: " ++ show clause')
+      Just aclause ->
+        pure aclause
 
--- | Conservatively, make as many reduction steps as possible.
-step :: forall s. (ClauseSet.Pattern -> Memo Formula s Formula) -> Scope -> Formula -> Memo Formula s Formula
-step table scope = fmap fst . go (mkScope [])
+  runMemo (table "q0")
+
+-- | Table of clauses grouped by head symbol.
+type Table f =
+  String -> Memo AClause f AClause
+
+-- | Rewrite atoms in the body of a clause to an automaton formula.
+rewrite :: 
+  forall f.
+  [Id] -> -- ^ Subjects of the formula.
+  Table f -> -- ^ Table of results
+    Formula -> -- ^ Body of a clause.
+      Memo AClause f Formula
+rewrite subjects = go (HashSet.fromList subjects)
   where
-    go :: Scope -> Formula -> Memo Formula s (Formula, Subst)
-    go existentials (Atom tm@(App (Sym p) (Apps (Sym f) ss))) = do
+    go :: Scope -> Table f -> Formula -> Memo AClause f Formula
+    go _ _ fm
+      | trace ("Step: " ++ show (subjects, fm)) False = undefined
+    go scope table (Atom (App (Sym p) arg@(Apps (Sym f) ss))) = do
       -- (Step)
-      (xs, head, body) <- ClauseSet.viewClause <$> table (ClauseSet.Global p f)
-      inst <- match xs head tm
-      go existentials (subst inst body)
-    go existentials goal@(Atom (App (Sym p) (Var x)))
-      | x `IdEnv.member` existentials = do
-          -- (ExInst/Step)
-          (xs, head@(Apps f _), body) <- ClauseSet.viewClause <$> table (ClauseSet.Assm p [])
-
-          -- Create fresh instance
-          let (_, xs') = uniqAways scope xs
-              rho = mkRenaming (zip xs xs')
-
-          -- Omit fresh existentials to break loops
-          (body', theta) <- go existentials (subst rho body)
-          pure (body', mkSubst [(x, Apps f (fmap Var xs'))] <> theta)
-      | otherwise =
-          pure (goal, mkSubst [])
-    go existentials (Atom (App (Sym p) (Apps (Var x) ss)))
-      | x `IdEnv.member` existentials =
-          error "Higher-order existentials are not yet supported!"
+      clause@(AClause xs _ arg' body) <- table p
+      inst <- match xs arg' arg
+      traceM ("Resolve with: " ++ show (clauseToFormula clause))
+      go scope table (subst inst body)
+    go scope table (Atom (App (Sym p) arg@(Var x)))
+      | x `elem` subjects = pure (Atom (App (Sym p) arg)) 
       | otherwise = do
-          -- (Assm)
-          (xs, head, body) <- ClauseSet.viewClause <$> table (ClauseSet.Assm p (sortArgs (idSort x)))
+        -- (Refl)
+        clause@(AClause xs _ arg' body) <- table p
+        inst <- match xs arg' arg
+        traceM ("Resolve with: " ++ show (clauseToFormula clause))
+        go scope table (subst inst body)
+    go scope table (Atom (App (Sym p) arg@(Apps (Var x) ss)))
+      | x `elem` subjects = do
+        -- (Assm)
+        clause@(AClause xs _ _ body) <- table p
+        traceM ("Resolve with: " ++ show (clauseToFormula clause))
 
-          -- Split variables into those that are partially applied
-          let (zs, ys) = List.splitAt (length xs - length ss) xs
+        -- Drop partially applied variables.
+        let ys = drop (length xs - length ss) xs
+        guard (sortArgs x.sort == map (.sort) ys)
 
-          -- Create fresh instance.
-          let (_, ys') = uniqAways scope ys
-              rho = mkRenaming (zip ys ys')
+        -- Create fresh instance.
+        let (_, ys') = uniqAways scope ys
+            rho = mkRenaming (zip ys ys')
 
-              -- Build formula.
-              inst = mkSubst (zip ys' ss)
-              body' = restrictBody ys' (subst rho body)
-              head' = App (Sym p) (Apps (Var x) (map Var ys'))
+        -- Build reduct  
+        let inst = mkSubst (zip ys' ss)
+            body' = subst rho (restrictBody ys body)
+            head' = App (Sym p) (Apps (Var x) (map Var ys'))
+        go scope table (Conj [subst inst body', Clause ys' (Atom head') body'])
+      | otherwise = do
+        -- (Step)
+        clause@(AClause xs _ arg' body) <- table p
+        traceM ("Resolve with: " ++ show (clauseToFormula clause))
+        inst <- match xs arg' arg
+        go scope table (subst inst body) 
+    go scope table (Atom _) = error "Atom is not well-formed!"
+    go scope table (Conj []) = pure (Conj [])
+    go scope table (Conj (fm : fms)) = do
+      -- (AndL)
+      fm' <- go scope table fm
+      fms' <- go scope table (Conj fms)
+      pure (Conj [fm', fms'])
+    go scope table (Exists _ _) = error "Existentials are not yet supported!"
+    go scope table (Clause xs head body)
+      | all (`notElem` xs) (freeVars head) =
+        -- (Scope1)
+        go scope table head
+      | Atom (App (Sym p) arg@(Apps (Var x) ss)) <- head,
+        x `elem` subjects,
+        all (`elem` map Var xs) ss = do
+          -- Head is already of the right form.
+          pure (Clause xs head body)
+      | otherwise = do
+          -- (ImpImp)
+          let (scope', xs') = uniqAways scope xs
+              rho = mkRenaming (zip xs xs')
+              body' = subst rho body
 
-          pure (Conj [subst inst body', Clause ys' (Atom head') body'], mkSubst [])
-    go existentials (Conj []) = pure (Conj [], mkSubst [])
-    go existentials (Conj (fm : fms)) = do
-      (fm', theta) <- go existentials fm
-      (fms', theta') <- go existentials (Conj (subst theta <$> fms))
-      pure (Conj [fm', fms'], theta <> theta')
-    go existentials (Exists x body) = do
-      -- (ExInst)
-      (body', theta) <- go (mkScope [x] <> existentials) body
+              table' p = asum [ pure aclause | 
+                                      let Just clauses = formulaToNestedClauses xs' body',
+                                      aclause@(AClause _ p' _ _) <- HashSet.toList clauses,
+                                      p == p'
+                                  ] <|> table p
 
-      -- Capture fresh existentials.
-      case lookupSubst x theta of
-        Nothing -> pure (Exists x body', theta)
-        Just tm -> do
-          let xs = freeVars tm
-          pure (foldl' (flip Exists) body' xs, deleteSubst [x] theta)
-    go existentials (Clause xs (Atom tm@(App (Sym p) (Apps (Sym f) ss))) body) = do
-      -- (Imp/Step)
-      (ys, head, body') <- ClauseSet.viewClause <$> table (ClauseSet.Global p f)
-      inst <- match ys head tm
-
-      go existentials (weaken $ Clause xs (subst inst body') body)
-    go existentials goal@(Clause xs (Atom tm@(App (Sym p) (Apps (Var x) ss))) body)
-      | x `IdEnv.member` existentials =
-          error "Higher-order existentials are not yet supported!"
-      | x `elem` xs = do
-          -- (Imp/Refl/Step)
-          (ys, head, body') <- ClauseSet.viewClause <$> ClauseSet.lookup (ClauseSet.Local p x) (ClauseSet.fromList [body])
-          inst <- match ys head tm
-
-          go existentials (weaken $ Clause xs (subst inst body') body)
-      | map Var xs == ss =
-          pure (goal, mkSubst [])
-      | otherwise =
-          -- (Assm)
-          undefined
-    go existentials goal =
-      error ("Unexpected goal formula: " ++ show goal)
+          head' <- go scope' table' (subst rho head)
+          if all (`notElem` xs) (freeVars head')
+            then pure head'
+            else pure (Clause xs' head' body')
 
 -- | @matchHead xs head tm@ finds instance of @head@ that matches @tm@ instantitates @xs@.
 -- N.B. The head is assumed to be shallow and linear.
@@ -134,28 +147,6 @@ match xs = go (mkSubst [])
       go theta' arg arg'
     go _ _ _ = mzero
 
--- | Check that the given formula is a top-level automaton clause.
-isAutomaton :: Formula -> Bool
-isAutomaton (Atom (App (Sym p) (Sym f))) = True
-isAutomaton (Atom _) = False
-isAutomaton (Conj fs) =
-  all isAutomaton fs
-isAutomaton (Clause xs (Atom (App (Sym p) (Apps (Sym f) ss))) body) =
-  -- We can assume the head is valid
-  isAutomatonBody xs body
-isAutomaton (Clause _ _ _) = False
-isAutomaton (Exists _ _) = False
-
--- | Check that the given formula is a valid automaton body.
-isAutomatonBody :: [Id] -> Formula -> Bool
-isAutomatonBody xs (Atom (App (Sym _) (Var x))) = x `elem` xs
-isAutomatonBody xs (Conj fms) = all (isAutomatonBody xs) fms
-isAutomatonBody xs (Clause ys (Atom (App (Sym p) (Apps (Var x) ss))) body) =
-  x `elem` xs
-    && map Var ys == ss
-    && isAutomatonBody ys body
-isAutomatonBody _ _ = False
-
 -- | Verify and restrict a formula to be the body of an automaton clause.
 restrictBody :: [Id] -> Formula -> Formula
 restrictBody xs = Conj . go []
@@ -170,12 +161,3 @@ restrictBody xs = Conj . go []
       | x `elem` xs = fm : acc
       | otherwise = acc
     go acc body = error "Non-automaton!"
-
--- | Restrict clauses to only those variables in the head.
-weaken :: Formula -> Formula
-weaken (Clause xs head body) =
-  let xs' = filter (`IdEnv.member` freeVars head) xs
-   in Clause xs' head (restrictBody xs' body)
-weaken (Conj fms) =
-  Conj (fmap weaken fms)
-weaken nonClause = nonClause

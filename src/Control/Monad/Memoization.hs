@@ -50,9 +50,9 @@ instance MonadPlus (Memo r s) where
     liftM2 (<|>) (runContT m k) (runContT m' k)
 
 -- | Extract all from the memoization monad.
-runMemo :: Memo r s r -> ST s [r]
+runMemo :: Hashable r => Memo r s r -> ST s (HashSet.HashSet r)
 runMemo k =
-  observeAll <$> runContT (unMemo k) (pure . pure)
+  HashSet.fromList . observeAll <$> runContT k.unMemo (pure . pure)
 
 -- | Lift a stateful computation into the memoization monad.
 liftST :: ST s a -> Memo r s a
@@ -60,9 +60,9 @@ liftST = Memo . lift
 
 -- | Memoize a non-deterministic function.
 memo ::
-  (Hashable a, Hashable b) =>
-  (a -> Memo b s b) ->
-  ST s (a -> Memo b s b)
+  (Hashable a, Hashable r) =>
+  (a -> Memo r s r) ->
+  ST s (a -> Memo r s r)
 memo f = do
   ref <- newSTRef HashMap.empty
   pure $ \x ->

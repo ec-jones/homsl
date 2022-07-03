@@ -7,13 +7,12 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
-import qualified HoMSL.ClauseSet as ClauseSet
 import HoMSL.Syntax
 import HoRS.Inference
 import HoRS.Syntax
 
 -- | Conver a HoRS problem into a clause set.
-horsToHoMSL :: [Rule] -> [Transition] -> ClauseSet.ClauseSet
+horsToHoMSL :: [Rule] -> [Transition] -> [Formula]
 horsToHoMSL rules trans =
   let env = inferSorts (rules, trans)
       qs = HashMap.keys $ HashMap.filter isPredicate env
@@ -23,9 +22,8 @@ horsToHoMSL rules trans =
 -- * Constructing HoMSL clauses.
 
 -- | Make a transition clause.
-mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> ClauseSet.ClauseSet
-mkTransitionClause env (Transition q f rhs) =
-  ClauseSet.ClauseSet $ HashMap.singleton q (HashSet.singleton getFormula)
+mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> [Formula]
+mkTransitionClause env (Transition q f rhs) = [getFormula]
   where
     getFormula :: Formula
     getFormula =
@@ -42,10 +40,8 @@ mkTransitionClause env (Transition q f rhs) =
            in Clause xs head body
 
 -- | Make clauses for each state and production rule.
-mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> ClauseSet.ClauseSet
-mkRuleClauses qs env (Rule f xs rhs) =
-  ClauseSet.ClauseSet $
-    HashMap.fromListWith HashSet.union [(q, HashSet.singleton (getFormula q)) | q <- qs]
+mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> [Formula]
+mkRuleClauses qs env (Rule f xs rhs) = [getFormula q | q <- qs]
   where
     getFormula :: String -> Formula
     getFormula q =

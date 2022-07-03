@@ -2,46 +2,52 @@
 
 -- | The syntax of terms and formula.
 module HoMSL.Syntax
-  ( -- * Sorts
+  ( -- * Identifiers
+    Id (..),
+
+    -- * Sorts
     Sort (..),
     sortArgs,
     isPredicate,
 
-    -- * Identifiers
-    Id (..),
-
     -- * Terms
     Term (..),
     pattern Apps,
+    termHead,
+    isMaybeVar,
 
-    -- * Formulas
+    -- * Formulas,
     Formula,
     pattern Atom,
     pattern Conj,
-    pattern Clause,
     pattern Exists,
+    pattern Clause,
+    viewClause,
 
-    -- * Parser
-    parseProgram,
-    parseFormula,
+    -- * Automaton Clauses
+    AClause (..),
+    clauseToFormula,
+    clausesToFormula,
+    formulaToClause,
+    formulaToNestedClauses,
 
     -- * Scope
-    IdEnv.Scope,
-    IdEnv.mkScope,
-    IdEnv.uniqAway,
-    IdEnv.uniqAways,
+    Scope,
+    uniqAway,
+    uniqAways,
 
-    -- * Substitution
-    IdEnv.Subst (..),
-    IdEnv.mkSubst,
-    IdEnv.mkRenaming,
-    IdEnv.lookupSubst,
-    IdEnv.deleteSubst,
-    IdEnv.FreeVars (..),
+    -- * Substitutions
+    Subst (scope),
+    mkSubst,
+    mkRenaming,
+    lookupSubst,
+    extendSubst,
+
+    -- * Substable
+    Substable (..),
   )
 where
 
-import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax.Formula
+import HoMSL.Syntax.Subst
 import HoMSL.Syntax.Term
-import HoMSL.Syntax.Parser

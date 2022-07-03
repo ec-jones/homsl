@@ -169,7 +169,10 @@ class FreeVars a where
   subst :: Subst -> a -> a
 
 instance FreeVars (Term Id) where
-  freeVars = foldMap (\x -> fromList [(x, x)])
+  freeVars (Var x) = mkScope [x]
+  freeVars (Sym f) = mkScope []
+  freeVars (App fun arg) =
+    freeVars fun <> freeVars arg
 
   subst theta
     | null (substMap theta) = id

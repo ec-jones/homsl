@@ -1,16 +1,18 @@
 {-# LANGUAGE LambdaCase #-}
 
-module HoMSL.Syntax.Parser (
-    parseProgram, parseFormula
-    ) where
+module HoMSL.Syntax.Parser
+  ( parseProgram
+  )
+where
 
 import Control.Monad.Reader
 import Data.Char
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 import qualified Data.List as List
-import qualified HoMSL.IdEnv as IdEnv
 import HoMSL.Syntax.Formula
+import HoMSL.Syntax.Subst
 import HoMSL.Syntax.Term
 import Text.Parsec
 import Text.Parsec.Token
@@ -26,12 +28,6 @@ parseProgram str =
         str
     )
     mempty of
-    Left err -> error (show err)
-    Right fs -> fs
-
-parseFormula :: String -> Formula
-parseFormula str =
-  case runReader  ( runParserT pBody 0 "" str ) mempty of
     Left err -> error (show err)
     Right fs -> fs
 
@@ -65,7 +61,7 @@ pClause = do
       )
       <|> pure []
 
-  local (HashMap.fromList [(idName x, x) | x <- xs] <>) $ do
+  local (HashMap.fromList [(x.name, x) | x <- xs] <>) $ do
     head <- pHead
 
     body <-
@@ -75,7 +71,7 @@ pClause = do
         )
         <|> pure (Conj [])
 
-    let (us, es) = List.partition (`IdEnv.member` IdEnv.freeVars head) xs
+    let (us, es) = List.partition (`HashSet.member` freeVars head) xs
         body' = foldl' (flip Exists) body es
 
     pure (Clause (toList us) head body')
@@ -91,8 +87,8 @@ pBody =
   where
     pAtom :: ParsecT String Int (Reader (HashMap.HashMap String Id)) Formula
     pAtom =
-      try (Atom <$> pTerm) <|>
-        pClause
+      try (Atom <$> pTerm)
+        <|> pClause
 
 -- | Parse an applicative term.
 pTerm :: ParsecT String Int (Reader (HashMap.HashMap String Id)) (Term Id)

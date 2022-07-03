@@ -1,6 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -12,16 +9,25 @@ module HoMSL.Syntax.Formula
     pattern Conj,
     pattern Exists,
     pattern Clause,
+    viewClause,
+
+    -- * Automaton Clauses
+    AClause (..),
+    clauseToFormula,
+    clausesToFormula,
+    formulaToClause,
+    formulaToNestedClauses,
   )
 where
 
-import Control.DeepSeq
+import Control.Applicative
+import Control.Monad
 import Data.Foldable
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Hashable
 import qualified Data.List as List
-import GHC.Generics
-import qualified HoMSL.IdEnv as IdEnv
+import HoMSL.Syntax.Subst
 import HoMSL.Syntax.Term
 
 -- * Formulas
@@ -29,14 +35,12 @@ import HoMSL.Syntax.Term
 -- | General logical formulas.
 data Formula = Formula
   { -- | The underlying shape of a formula.
-    formulaShape :: FormulaShape,
+    shape :: FormulaShape,
     -- | The free variables in a formula.
-    formulaFreeVars :: IdEnv.Scope,
+    freeVars :: Scope,
     -- | Given de Buijn indicies hash the formula.
-    formulaHash :: HashFun
+    hash :: HashFun
   }
-  deriving stock (Generic)
-  deriving anyclass (NFData)
 
 -- | The underlying shape of formula.
 data FormulaShape
@@ -44,23 +48,21 @@ data FormulaShape
   | Conj_ (HashSet.HashSet Formula)
   | Clause_ [Id] Formula Formula
   | Exists_ Id Formula
-  deriving stock (Generic)
-  deriving anyclass (NFData)
 
 -- | Equality and hashing check for alpha equivalence.
 instance Eq Formula where
-  (==) = eqAlpha (IdEnv.empty, IdEnv.empty)
+  (==) = eqAlpha (HashMap.empty, HashMap.empty)
     where
-      eqAlpha :: (IdEnv.IdEnv Int, IdEnv.IdEnv Int) -> Formula -> Formula -> Bool
+      eqAlpha :: (HashMap.HashMap Id Int, HashMap.HashMap Id Int) -> Formula -> Formula -> Bool
       eqAlpha (envl, envr) (Atom t) (Atom s) = eqAlphaTm t s
         where
           eqAlphaTm :: Term Id -> Term Id -> Bool
           eqAlphaTm (Var x) (Var y)
-            | Just i <- IdEnv.lookup x envl,
-              Just j <- IdEnv.lookup y envr =
+            | Just i <- HashMap.lookup x envl,
+              Just j <- HashMap.lookup y envr =
                 i == j
-            | Nothing <- IdEnv.lookup x envl,
-              Nothing <- IdEnv.lookup y envr =
+            | Nothing <- HashMap.lookup x envl,
+              Nothing <- HashMap.lookup y envr =
                 x == y
             | otherwise = False
           eqAlphaTm (Sym f) (Sym g) = f == g
@@ -68,8 +70,8 @@ instance Eq Formula where
             eqAlphaTm fun fun' && eqAlphaTm arg arg'
           eqAlphaTm _ _ = False
       eqAlpha env (Conj fs) (Conj gs) =
-        length fs == length gs &&
-          all (uncurry (eqAlpha env)) (zip fs gs)
+        length fs == length gs
+          && all (uncurry (eqAlpha env)) (zip fs gs)
       eqAlpha (envl, envr) (Clause xs head body) (Clause xs' head' body') =
         let envl' = shift xs envl
             envr' = shift xs' envr
@@ -84,7 +86,7 @@ instance Eq Formula where
 -- | Equality and hashing check for alpha equivalence.
 instance Hashable Formula where
   hashWithSalt s f =
-    hashWithSalt s (formulaHash f IdEnv.empty)
+    hashWithSalt s (f.hash HashMap.empty)
 
 instance Show Formula where
   showsPrec p (Atom t) = showsPrec p t
@@ -111,94 +113,67 @@ instance Show Formula where
   showsPrec p (Exists x body) =
     showParen (p > 1) (showString "exists " . shows x . showString ". " . showsPrec 2 body)
 
-instance IdEnv.FreeVars Formula where
-  freeVars = formulaFreeVars
+instance Substable Formula where
+  freeVars fm = fm.freeVars
 
   subst theta (Atom t) =
-    Atom (IdEnv.subst theta t)
+    Atom (subst theta t)
   subst theta (Conj fs) =
-    Conj (IdEnv.subst theta <$> fs)
-  subst theta f@(Clause xs head body) =
-    let (_, xs') = IdEnv.uniqAways (IdEnv.substScope theta <> IdEnv.freeVars f) xs
-        theta' = IdEnv.mkRenaming (zip xs xs') <> theta
-     in Clause xs' (IdEnv.subst theta' head) (IdEnv.subst theta' body)
+    Conj (subst theta <$> fs)
   subst theta f@(Exists x body) =
-    let (_, x') = IdEnv.uniqAway (IdEnv.substScope theta <> IdEnv.freeVars f) x
-        theta' = IdEnv.mkRenaming [(x, x')] <> theta
-     in Exists x' (IdEnv.subst theta' body)
+    let (_, x') = uniqAway (theta.scope <> freeVars f) x
+        theta' = mkRenaming [(x, x')] <> theta
+     in Exists x' (subst theta' body)
+  subst theta f@(Clause xs head body) =
+    let (_, xs') = uniqAways (theta.scope <> freeVars f) xs
+        theta' = mkRenaming (zip xs xs') <> theta
+     in Clause xs' (subst theta' head) (subst theta' body)
 
 -- * Smart constructors
 
-{-# COMPLETE Atom, Conj, Clause, Exists #-}
+{-# COMPLETE Atom, Conj, Exists, Clause #-}
 
 -- | An atomic formula.
 pattern Atom :: Term Id -> Formula
 pattern Atom t <-
-  Formula {formulaShape = Atom_ t}
+  Formula {shape = Atom_ t}
   where
     Atom t =
       Formula
-        { formulaShape = Atom_ t,
-          formulaFreeVars = IdEnv.freeVars t,
-          formulaHash = hashAtom (hashTerm t)
+        { shape = Atom_ t,
+          freeVars = freeVars t,
+          hash = hashAtom (hashTerm t)
         }
 
 -- | A conjunction of formulas.
 pattern Conj :: [Formula] -> Formula
 pattern Conj fs <-
-  Formula {formulaShape = Conj_ (HashSet.toList -> fs)}
+  Formula {shape = Conj_ (HashSet.toList -> fs)}
   where
     Conj = flattenConj mempty
 
 -- | Eliminate nested conjunctions.
-flattenConj :: (HashSet.HashSet Formula, IdEnv.Scope) -> [Formula] -> Formula
+flattenConj :: (HashSet.HashSet Formula, Scope) -> [Formula] -> Formula
 flattenConj (fs, fvs) []
   | [f] <- HashSet.toList fs = f
   | otherwise =
       Formula
-        { formulaShape = Conj_ fs,
-          formulaFreeVars = fvs,
-          formulaHash = hashConj (formulaHash <$> HashSet.toList fs)
+        { shape = Conj_ fs,
+          freeVars = fvs,
+          hash = hashConj [f.hash | f <- HashSet.toList fs]
         }
 flattenConj (fs, fvs) (g@(Conj hs) : gs) =
   flattenConj
-    ( fs `HashSet.union` HashSet.fromList hs,
-      fvs <> IdEnv.freeVars g
+    ( fs <> HashSet.fromList hs,
+      fvs <> freeVars g
     )
     gs
 flattenConj (fs, fvs) (g : gs) =
   flattenConj
     ( HashSet.insert g fs,
-      fvs <> IdEnv.freeVars g
+      fvs <> freeVars g
     )
     gs
-
--- | A universally quantified clause.
--- N.B. All universally quantified variables must appear in the head.
-pattern Clause :: [Id] -> Formula -> Formula -> Formula
-pattern Clause xs head body <-
-  Formula (Clause_ xs head body) _ _
-  where
-    Clause [] head (Conj []) = 
-      -- Trivial clause
-      head
-    Clause xs (Conj heads) body =
-      -- (ImpAnd)
-      Conj [Clause xs head body | head <- heads]
-    Clause xs (Clause ys head' body') body =
-      -- (ImpImp)
-      let (_, ys') = IdEnv.uniqAways (IdEnv.mkScope xs) ys
-          rho = IdEnv.mkRenaming (zip ys ys')
-       in Clause (xs ++ ys') (IdEnv.subst rho head') (Conj [body, IdEnv.subst rho body'])
-    Clause _ (Exists _ _) _ = error "Non-horn clause!"
-    Clause xs head@(Atom tm) body =
-      -- Order variables as they appear in the head.
-      let xs' = toList tm `List.intersect` xs
-       in Formula
-            { formulaShape = Clause_ xs' head body,
-              formulaFreeVars = IdEnv.deleteMany xs' (IdEnv.freeVars body <> IdEnv.freeVars head),
-              formulaHash = hashClause xs' (formulaHash head) (formulaHash body)
-            }
 
 -- | An existential quantification.
 pattern Exists :: Id -> Formula -> Formula
@@ -211,26 +186,142 @@ pattern Exists x body <-
           -- (Scope2)
           Conj (Exists x (Conj gs) : hs)
       where
-        (gs, hs) = List.partition (IdEnv.member x . IdEnv.freeVars) fs
+        (gs, hs) = List.partition (HashSet.member x . freeVars) fs
     Exists x body
-      | x `IdEnv.member` IdEnv.freeVars body =
+      | x `HashSet.member` freeVars body =
           Formula
-            { formulaShape = Exists_ x body,
-              formulaFreeVars = IdEnv.delete x (IdEnv.freeVars body),
-              formulaHash = hashExists x (formulaHash body)
+            { shape = Exists_ x body,
+              freeVars = HashSet.delete x (freeVars body),
+              hash = hashExists x body.hash
             }
       | otherwise = body
+
+-- | A universally quantified clause.
+pattern Clause :: [Id] -> Formula -> Formula -> Formula
+pattern Clause xs head body <-
+  Formula (Clause_ xs head body) _ _
+  where
+    Clause [] head (Conj []) = head
+    Clause xs (Conj heads) body =
+      -- (ImpAnd)
+      Conj [Clause xs head body | head <- heads]
+    Clause xs head body =
+      Formula
+        { shape = Clause_ xs head body,
+          freeVars =
+            (freeVars body <> freeVars head)
+              `HashSet.difference` HashSet.fromList xs,
+          hash = hashClause xs head.hash body.hash
+        }
+
+-- | View a formula as a (non-automaton) definite clause.
+viewClause :: Formula -> ([Id], Term Id, Formula)
+viewClause (Atom tm) = ([], tm, Conj [])
+viewClause (Clause xs (Atom tm) body) = (xs, tm, body)
+viewClause _ = error "Formula is not a clause!"
+
+-- * Automaton Clause
+
+-- | Explicit representation of an automaton clause.
+data AClause
+  = AClause [Id] String (Term Id) Formula
+
+instance Eq AClause where
+  clause1 == clause2 =
+    clauseToFormula clause1 == clauseToFormula clause2
+
+instance Hashable AClause where
+  hashWithSalt s =
+    hashWithSalt s . clauseToFormula
+
+instance Show AClause where
+  show = show . clauseToFormula
+
+-- | The logical interpretation of an automaton clause.
+clauseToFormula :: AClause -> Formula
+clauseToFormula (AClause xs p arg body) =
+  Clause xs (Atom (App (Sym p) arg)) body
+
+-- | Interpret a (conjunctive) set of clauses as a single formula.
+clausesToFormula :: HashSet.HashSet AClause -> Formula
+clausesToFormula clauses =
+  Conj [clauseToFormula clause | clause <- HashSet.toList clauses]
+
+-- | View a formula as a /top-levl/ automaton clause.
+formulaToClause :: Formula -> Maybe AClause
+formulaToClause (Atom (App (Sym p) (Sym f))) =
+  Just (AClause [] p (Sym f) (Conj []))
+formulaToClause (Clause xs (Atom (App (Sym p) arg@(Apps (Sym f) args))) body) = do
+  _ <- formulaToNestedClauses xs body
+  pure (AClause xs p arg body)
+formulaToClause _ = Nothing
+
+-- | View a formula as a conjunction of nested automaton clauses.
+-- The first argument is the possible subjects.
+formulaToNestedClauses :: [Id] -> Formula -> Maybe (HashSet.HashSet AClause)
+formulaToNestedClauses xs = go HashSet.empty
+  where
+    go :: HashSet.HashSet AClause -> Formula -> Maybe (HashSet.HashSet AClause)
+    go acc (Atom (App (Sym p) (Var x)))
+      | x `elem` xs =
+        pure (HashSet.insert (AClause [] p (Var x) (Conj [])) acc)
+      | otherwise =
+        empty
+    go acc (Conj fms) =
+      foldM go acc fms
+    go acc (Clause ys (Atom (App (Sym p) arg@(Apps (Var x) args))) body)
+      | x `elem` xs = do
+          ys' <- mapM isMaybeVar args
+          guard (all (`elem` ys) ys')
+          _ <- formulaToNestedClauses ys' body
+          pure (HashSet.insert (AClause ys' p arg body) acc)
+      | otherwise = empty
+    go _ _ = empty
+
+-- -- The first argument are the possible local variable subjects.
+-- -- If, and only if, there are no subjects may the clause must be top-level.
+-- formulaToClauses :: [Id] -> Formula -> Maybe (HashSet.HashSet AClause)
+-- formulaToClauses xs = go xs HashSet.empty
+--   where
+--     go :: [Id] -> HashSet.HashSet AClause -> Formula -> Maybe (HashSet.HashSet AClause)
+--     go xs acc (Atom (App (Sym p) (Sym f)))  
+--       | null xs = 
+--           pure (HashSet.insert (AClause [] p (Sym f) (Conj [])) acc)
+--       | otherwise =
+--           empty
+--     go xs acc (Atom (App (Sym p) (Var x)))    
+--       | x `elem` xs =
+--           pure (HashSet.insert (AClause [] p (Var x) (Conj [])) acc)
+--       | otherwise =
+--           empty
+--     go xs acc (Conj fms) =
+--       foldM (go xs) acc fms
+--     go xs acc (Clause ys (Atom (App (Sym p) tm@(Apps (Sym f) args))) body)
+--       | null xs = do
+--           ys' <- mapM isMaybeVar args
+--           guard (all (`elem` ys) ys')
+--           _ <- formulaToClauses ys' body
+--           pure (HashSet.insert (AClause ys' p tm body) acc)
+--       | otherwise = empty
+--     go xs acc (Clause ys (Atom (App (Sym p) tm@(Apps (Var x) args))) body)
+--       | x `elem` xs = do
+--           ys' <- mapM isMaybeVar args
+--           guard (all (`elem` ys) ys')
+--           _ <- formulaToClauses ys' body
+--           pure (HashSet.insert (AClause ys' p tm body) acc)
+--       | otherwise = empty
+--     go _ _ _ = empty
 
 -- * Hash Combinators
 
 -- | Hash a value given a map that associates identifiers with their de Buijn index.
-type HashFun = IdEnv.IdEnv Int -> Int
+type HashFun = HashMap.HashMap Id Int -> Int
 
 -- | Extend a de Buijn environment binding a list of identifiers.
-shift :: [Id] -> IdEnv.IdEnv Int -> IdEnv.IdEnv Int
+shift :: [Id] -> HashMap.HashMap Id Int -> HashMap.HashMap Id Int
 shift xs env =
   foldl'
-    (\env' (x, i) -> IdEnv.insert x i env')
+    (\env' (x, i) -> HashMap.insert x i env')
     (fmap (+ length xs) env)
     (zip xs [0 ..])
 
@@ -240,8 +331,8 @@ hashAtom t env =
 
 hashTerm :: Term Id -> HashFun
 hashTerm (Var x) env =
-  case IdEnv.lookup x env of
-    Nothing -> hash ("Free", idUnique x)
+  case HashMap.lookup x env of
+    Nothing -> hash ("Free", x.unique)
     Just i -> hash ("Bound", i)
 hashTerm (Sym f) env = hash ("Sym", f)
 hashTerm (App fun arg) env =
