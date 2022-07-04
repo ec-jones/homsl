@@ -38,15 +38,15 @@ mkOpTransitionClauses env trans (q, f) =
       else [mkFormula rhsOp | rhsOp <- opRHSs (map rhs relevantTrans) ]
   where
     -- Construct the opposite of all right-hand sides.
-    opRHSs :: [IntMap.IntMap [String]] -> [IntMap.IntMap [String]]
+    opRHSs :: [IntMap.IntMap (HashSet.HashSet String)] -> [IntMap.IntMap (HashSet.HashSet String)]
     opRHSs rhss = do
       -- For each rhs choose an atom that violates the body 
-      violators <- mapM (\rhs -> [ IntMap.singleton i [p]
-                                    | (i, ps) <- IntMap.toList rhs, p <- ps ]) rhss
-      pure (fold violators)
+      violators <- mapM (\rhs -> [ IntMap.singleton i (HashSet.singleton p)
+                                    | (i, ps) <- IntMap.toList rhs, p <- HashSet.toList ps ]) rhss
+      pure (foldr (IntMap.unionWith HashSet.union) IntMap.empty violators)
 
     -- Make a transition with a given rhs.
-    mkFormula :: IntMap.IntMap [String] -> Formula
+    mkFormula :: IntMap.IntMap (HashSet.HashSet String) -> Formula
     mkFormula rhs =
       case HashMap.lookup f env of
         Nothing -> error "State not in scope!"
@@ -57,7 +57,7 @@ mkOpTransitionClauses env trans (q, f) =
                 Conj
                   [ Atom (App (Sym p) (Var (xs !! (i - 1))))
                     | (i, ps) <- IntMap.toList rhs,
-                      p <- ps
+                      p <- HashSet.toList ps
                   ]
            in Clause xs head body
 
