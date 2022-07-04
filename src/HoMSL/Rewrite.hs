@@ -7,7 +7,6 @@ import Control.Applicative
 import Control.Monad.Logic
 import Control.Monad.Writer
 import Data.Foldable
-import Control.Monad.ST
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet as HashSet
 import HoMSL.Syntax
@@ -20,30 +19,28 @@ saturate = go HashMap.empty HashSet.empty
     go :: HashMap.HashMap Formula [Term Id] -> HashSet.HashSet AClause -> [Formula] -> HashSet.HashSet AClause
     go seen autos [] = autos
     go seen autos (clause : clauses) =
-      case formulaToClause clause of
+      case formulaToClause (traceShowId clause) of
         Nothing
           | clause `HashMap.member` seen -> go seen autos clauses
           | otherwise ->
-            let (clauses', selected) = rewriteWith autos clause
+            -- Rewrite the body of non-automaton clause.
+            let (xs, head, body) = viewClause clause
+                (reducts, selected) = runWriter $ observeAllT (rewrite autos xs body)
+                clauses' = Clause xs (Atom head) <$> reducts
              in go (HashMap.insert clause selected seen) autos (clauses' ++ clauses)
         Just auto
           | auto `HashSet.member` autos -> go seen autos clauses
           | otherwise ->
-            -- Find, and resaturate, clauses that are relevant to the new automaton clause
+            -- Find clauses that are relevant to the new automaton clause.
             let relevant = [ clause | (clause, selected) <- HashMap.toList seen,
                                       any (relevantAtom auto) selected ]
-                reducts = concatMap (fst . rewriteWith (HashSet.singleton auto)) relevant
-             in 
-              go seen (HashSet.insert auto autos) (reducts ++ clauses)
+                seen' = foldl' (flip HashMap.delete) seen relevant
+             in
+              trace ("Relevant: " ++ show relevant) $ go seen' (HashSet.insert auto autos) (relevant ++ clauses)
     
-    rewriteWith :: HashSet.HashSet AClause -> Formula -> ([Formula], [Term Id])
-    rewriteWith autos clause =
-      let (xs, head, body) = viewClause clause
-          (reducts, selected) = runWriter $ observeAllT (rewrite autos xs body)
-       in (Clause xs (Atom head) <$> reducts, selected)
 
--- | Make a reduction step in a non-automaton body.
--- The function also emits any selected atom.
+-- | Rewrite the body of a non-automaton clause.
+-- The function also emits any atom that were selected.
 rewrite :: 
   HashSet.HashSet AClause -> -- ^ Global automaton clauses
   [Id] -> -- ^ Subjects of the formula.
@@ -116,7 +113,9 @@ rewrite autos subjects fm =
         -- (Scope1)
         go scope autos head
       | Atom (App (Sym p) arg@(Apps (Var x) ss)) <- head,
-        x `elem` subjects = pure (Clause xs head body)
+        x `elem` subjects,
+        all (\s -> any (\x -> s == Var x) xs) ss = 
+          pure (Clause xs head body)
       | otherwise = do
           -- (Imp)
           let (scope', xs') = uniqAways scope xs
@@ -126,8 +125,13 @@ rewrite autos subjects fm =
           -- Extend antecedent with local automaton clauses
           let Just autos' = formulaToNestedClauses xs' body'
 
-          head' <- go scope' (autos' <> autos) (subst rho head)
-          pure (Clause xs' head' body')
+          head' <- go scope' (autos <> autos') (subst rho head)
+          if all (`notElem` xs') (freeVars head')
+            then pure head'
+            else
+              -- (ImpImp) does not appear in completeness proof
+              -- Therefore, the only way to recover is through (Scope1).
+              empty
 
 -- | Mark an atom as selected.
 select :: Term Id -> LogicT (Writer [Term Id]) ()
@@ -137,7 +141,7 @@ defaultTo :: MonadLogic m => a -> m a -> m a
 defaultTo x xs =
   msplit xs >>= \case
     Nothing -> pure x
-    Just (y, ys) -> reflect (Just (y, ys))
+    Just _ -> xs
 
 -- | Check if the atom could be resolved with the clause.
 relevantAtom :: AClause -> Term Id -> Bool

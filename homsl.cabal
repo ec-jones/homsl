@@ -13,7 +13,6 @@ library
   other-modules:      HoMSL.Syntax.Term,
                       HoMSL.Syntax.Formula,
                       HoMSL.Syntax.Subst,
-                      -- Control.Monad.Memoization
 
   hs-source-dirs:     src
 
@@ -38,8 +37,6 @@ library
                       -Wno-unused-matches
                       -Wno-unused-local-binds
                       -Wno-name-shadowing
-
-                      -fprof-auto
 
   default-extensions: DerivingVia
                       DeriveTraversable
@@ -66,7 +63,7 @@ executable hors-interface
                       homsl,
                       directory,
                       parsec,
-                      -- criterion
+                      criterion
 
   ghc-options:        -Wall
                       -Wcompat
@@ -82,7 +79,5 @@ executable hors-interface
                       -Wno-unused-matches
                       -Wno-name-shadowing
                       -Wno-unused-local-binds
-
-                      -fprof-auto
 
   default-language:   Haskell2010
