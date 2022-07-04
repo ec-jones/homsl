@@ -16,30 +16,37 @@ import Debug.Trace
 
 -- | Satuate a set of clauses.
 saturate :: [Formula] -> HashSet.HashSet AClause
-saturate clauses = go HashMap.empty HashSet.empty clauses
+saturate = snd . foldl' go (HashMap.empty, HashSet.empty)
   where
-    go :: HashMap.HashMap Formula (Maybe (Term Id)) -> HashSet.HashSet AClause -> [Formula] -> HashSet.HashSet AClause
-    go seen autos [] = autos
-    go seen autos (clause : clauses) =
+    go :: (HashMap.HashMap Formula (Maybe (Term Id)), HashSet.HashSet AClause) -> Formula -> (HashMap.HashMap Formula (Maybe (Term Id)), HashSet.HashSet AClause)
+    go (seen, autos) clause =
       case formulaToClause clause of
         Nothing
-          | clause `HashMap.member` seen -> go seen autos clauses
+          | clause `HashMap.member` seen -> (seen, autos)
           | otherwise ->
             -- Rewrite the body of non-automaton clause.
-            let (xs, head, body) = viewClause clause
-                (reducts, First selected) = runWriter $ observeAllT (step autos xs body)
-                clauses' = Clause xs head <$> reducts
-             in go (HashMap.insert clause selected seen) autos (clauses' ++ clauses)
+            let (clauses', selected) = stepWith autos clause
+             in foldl' go (HashMap.insert clause selected seen, autos) clauses'
         Just auto
-          | AFf <- auto -> HashSet.insert auto autos
-          | auto `HashSet.member` autos -> go seen autos clauses
+          | AFf <- auto -> (seen, HashSet.insert auto autos)
+          | auto `HashSet.member` autos -> (seen, autos)
           | otherwise ->
             -- Find clauses that are relevant to the new automaton clause.
-            let relevant = [ clause | (clause, Just selected) <- HashMap.toList seen,
+            let relevantClauses = [ clause | (clause, Just selected) <- HashMap.toList seen,
                                         relevantAtom auto selected ]
-                seen' = foldl' (flip HashMap.delete) seen relevant
+                clause' = [ clause' | relevantClause <- relevantClauses, 
+                                        let (clauses', _) = stepWith (HashSet.singleton auto) relevantClause,
+                                        clause' <- clauses' ]
              in
-              go seen' (HashSet.insert auto autos) (relevant ++ clauses)
+              foldl' go (seen, HashSet.insert auto autos) clause'
+    
+    -- Rewrite the body of non-automaton clause using the given automaton clauses..
+    stepWith :: HashSet.HashSet AClause -> Formula -> ([Formula], Maybe (Term Id))
+    stepWith autos clause = 
+      let (xs, head, body) = viewClause clause
+          (reducts, First selected) = runWriter $ observeAllT (step autos xs body)
+          clauses' = Clause xs head <$> reducts
+        in (clauses', selected)
     
 
 -- | Rewrite the body of a non-automaton clause.
@@ -49,37 +56,39 @@ step ::
   [Id] -> -- ^ Subjects of the formula.
   Formula -> -- ^ Body of a clause.
   LogicT (Writer (First (Term Id))) Formula
-step autos subjects fm =
-  go (HashSet.fromList subjects) autos fm
+step globalAutos subjects fm =
+  go HashSet.empty (HashSet.fromList subjects) fm
   where
-    go :: Scope -- ^ Variables in scope
-        -> HashSet.HashSet AClause -- ^ Local and global automaton clauses
+    go :: HashSet.HashSet AClause -- ^ Local automaton clauses
+        ->  Scope -- ^ Variables in scope
         -> Formula -- ^ Formula to rewrite
         -> LogicT (Writer (First (Term Id))) Formula
-    go scope autos (Atom atom@(App (Sym p) arg@(Apps (Sym f) ss))) = do
+    go _ _ Ff = error "Unexpected false in clause body!"
+    go localAutos scope (Atom atom@(App (Sym p) arg@(Apps (Sym f) ss))) = do
       -- (Step)
       select atom
       
-      AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
+      AClause xs p' arg' body <- msum (pure <$> HashSet.toList globalAutos)
       guard (p == p')
 
       inst <- match xs arg' arg
       pure (subst inst body)
-    go scope autos (Atom atom@(App (Sym p) arg@(Var x)))
+    go localAutos scope (Atom atom@(App (Sym p) arg@(Var x)))
       | x `elem` subjects = empty
       | otherwise = do
         -- (Refl)
-        AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
+        AClause xs p' arg' body <- msum (pure <$> HashSet.toList localAutos)
         guard (p == p')
 
         inst <- match xs arg' arg
         pure (subst inst body)
-    go scope autos (Atom atom@(App (Sym p) arg@(Apps (Var x) ss)))
+    go localAutos scope (Atom atom@(App (Sym p) arg@(Apps (Var x) ss)))
       | x `elem` subjects = do
         -- (Assm)
         select atom
 
-        AClause xs p' _ body <- msum (pure <$> HashSet.toList autos)
+        AClause xs p' _ body <- msum (pure <$> HashSet.toList localAutos) <|>
+                                  msum (pure <$> HashSet.toList globalAutos)
         guard (p == p')
 
         -- Drop partially applied variables.
@@ -98,26 +107,26 @@ step autos subjects fm =
         pure (Conj [subst inst body', Clause ys' (Atom head') body'])
       | otherwise = do
         -- (Step)
-        AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
+        AClause xs p' arg' body <- msum (pure <$> HashSet.toList localAutos)
         guard (p == p')
 
         inst <- match xs arg' arg
         pure (subst inst body)
-    go scope autos (Atom _) = error "Atom is not well-formed!"
-    go scope autos (Conj []) = empty
-    go scope autos (Conj (fm : fms)) = 
+    go localAutos scope (Atom _) = error "Atom is not well-formed!"
+    go localAutos scope (Conj []) = empty
+    go localAutos scope (Conj (fm : fms)) = 
       (do
         -- (AndL)
-        fm' <- go scope autos fm
+        fm' <- go localAutos scope fm
         pure (Conj (fm' : fms))
       ) `cut` (
         do
           -- (AndR)
-          fms' <- go scope autos (Conj fms)
+          fms' <- go localAutos scope (Conj fms)
           pure (Conj [fm, fms'])
       )
-    go scope autos (Exists _ _) = error "Existentials are not yet supported!"
-    go scope autos (Clause xs head body)
+    go localAutos scope (Exists _ _) = error "Existentials are not yet supported!"
+    go localAutos scope (Clause xs head body)
       | all (`notElem` xs) (freeVars head) = do
         -- (Scope1)
         pure head
@@ -132,9 +141,9 @@ step autos subjects fm =
               body' = subst rho body
               
           -- Extend antecedent with local automaton clauses
-          let Just autos' = formulaToNestedClauses xs' body'
+          let Just localAutos' = formulaToNestedClauses xs' body'
 
-          head' <- go scope' (autos <> autos') (subst rho head)
+          head' <- go (localAutos' <> localAutos) scope' (subst rho head)
           pure (Clause xs' head' body')
 
 -- | Mark an atom as selected.

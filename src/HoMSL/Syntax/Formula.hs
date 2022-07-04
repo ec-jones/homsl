@@ -234,9 +234,10 @@ pattern Clause xs head body <-
 
 -- | View a formula as a (non-automaton) definite clause.
 viewClause :: Formula -> ([Id], Formula, Formula)
+viewClause Ff = ([], Ff, Conj [])
 viewClause (Atom tm) = ([], Atom tm, Conj [])
 viewClause (Clause xs head body) = (xs, head, body)
-viewClause _ = error "Formula is not a clause!"
+viewClause fm = error ("Formula is not a clause: " ++ show fm)
 
 -- * Automaton Clause
 
