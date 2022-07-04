@@ -8,7 +8,8 @@ module Control.Monad.Memoization
     Memo,
     runMemo,
     memo,
-
+    liftST,
+    
     -- * Reexport
     Alternative (..),
   )
@@ -18,7 +19,7 @@ import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.Logic
 import Control.Monad.ST
-import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Hashable
 import Data.STRef
@@ -52,7 +53,7 @@ instance MonadPlus (Memo r s) where
 -- | Extract all from the memoization monad.
 runMemo :: Hashable r => Memo r s r -> ST s (HashSet.HashSet r)
 runMemo k =
-  HashSet.fromList . observeAll <$> runContT k.unMemo (pure . pure)
+  HashSet.fromList . observeAll <$> runContT (unMemo k) (pure . pure)
 
 -- | Lift a stateful computation into the memoization monad.
 liftST :: ST s a -> Memo r s a

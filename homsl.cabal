@@ -13,6 +13,7 @@ library
   other-modules:      HoMSL.Syntax.Term,
                       HoMSL.Syntax.Formula,
                       HoMSL.Syntax.Subst,
+                      Control.Monad.Memoization
 
   hs-source-dirs:     src
 
@@ -38,11 +39,14 @@ library
                       -Wno-unused-local-binds
                       -Wno-name-shadowing
 
+                      -O
+
   default-extensions: DerivingVia
                       DeriveTraversable
                       DeriveGeneric
                       GeneralizedNewtypeDeriving
                       DeriveAnyClass
+                      StandaloneDeriving
 
                       ScopedTypeVariables
                       FlexibleInstances
@@ -54,10 +58,16 @@ library
 executable hors-interface
   main-is:            Main.hs
 
+  other-modules:      HoRS.Syntax
+                      HoRS.Translation
+                      HoRS.Inference
+                      HoRS.Socket
+
   hs-source-dirs:     hors-interface
 
   build-depends:      base,
                       mtl,
+                      -- selective,
                       containers,
                       unordered-containers,
                       homsl,
@@ -79,5 +89,19 @@ executable hors-interface
                       -Wno-unused-matches
                       -Wno-name-shadowing
                       -Wno-unused-local-binds
+
+                      -O
+
+  default-extensions: DerivingVia
+                      DeriveTraversable
+                      DeriveGeneric
+                      GeneralizedNewtypeDeriving
+                      DeriveAnyClass
+                      StandaloneDeriving
+
+                      ScopedTypeVariables
+                      FlexibleInstances
+                      FlexibleContexts
+                      InstanceSigs
 
   default-language:   Haskell2010

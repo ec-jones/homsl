@@ -5,6 +5,7 @@
 module HoMSL.Syntax.Formula
   ( -- * Formulas,
     Formula,
+    pattern Ff,
     pattern Atom,
     pattern Conj,
     pattern Exists,
@@ -44,7 +45,8 @@ data Formula = Formula
 
 -- | The underlying shape of formula.
 data FormulaShape
-  = Atom_ (Term Id)
+  = Ff_
+  | Atom_ (Term Id)
   | Conj_ (HashSet.HashSet Formula)
   | Clause_ [Id] Formula Formula
   | Exists_ Id Formula
@@ -54,6 +56,7 @@ instance Eq Formula where
   (==) = eqAlpha (HashMap.empty, HashMap.empty)
     where
       eqAlpha :: (HashMap.HashMap Id Int, HashMap.HashMap Id Int) -> Formula -> Formula -> Bool
+      eqAlpha _ Ff Ff = True
       eqAlpha (envl, envr) (Atom t) (Atom s) = eqAlphaTm t s
         where
           eqAlphaTm :: Term Id -> Term Id -> Bool
@@ -89,6 +92,7 @@ instance Hashable Formula where
     hashWithSalt s (formulaHash f HashMap.empty)
 
 instance Show Formula where
+  showsPrec p Ff = showString "false"
   showsPrec p (Atom t) = showsPrec p t
   showsPrec p (Conj fs) = showParen (p > 3) (showConj fs)
     where
@@ -114,8 +118,11 @@ instance Show Formula where
     showParen (p > 1) (showString "exists " . shows x . showString ". " . showsPrec 2 body)
 
 instance Substable Formula where
+  freeVars :: Formula -> Scope
   freeVars = formulaFreeVars
 
+  subst :: Subst -> Formula -> Formula
+  subst theta Ff = Ff
   subst theta (Atom t) =
     Atom (subst theta t)
   subst theta (Conj fs) =
@@ -131,7 +138,17 @@ instance Substable Formula where
 
 -- * Smart constructors
 
-{-# COMPLETE Atom, Conj, Exists, Clause #-}
+{-# COMPLETE Ff, Atom, Conj, Exists, Clause #-}
+
+-- | False
+pattern Ff :: Formula
+pattern Ff <- Formula {formulaShape = Ff_ }
+  where
+    Ff = Formula {
+      formulaShape = Ff_,
+      formulaFreeVars = HashSet.empty,
+      formulaHash = hashFf
+    }
 
 -- | An atomic formula.
 pattern Atom :: Term Id -> Formula
@@ -162,6 +179,7 @@ flattenConj (fs, fvs) []
           formulaFreeVars = fvs,
           formulaHash = hashConj [formulaHash f | f <- HashSet.toList fs]
         }
+flattenConj _ (Ff : _) = Ff
 flattenConj (fs, fvs) (g@(Conj hs) : gs) =
   flattenConj
     ( fs <> HashSet.fromList hs,
@@ -215,9 +233,9 @@ pattern Clause xs head body <-
         }
 
 -- | View a formula as a (non-automaton) definite clause.
-viewClause :: Formula -> ([Id], Term Id, Formula)
-viewClause (Atom tm) = ([], tm, Conj [])
-viewClause (Clause xs (Atom tm) body) = (xs, tm, body)
+viewClause :: Formula -> ([Id], Formula, Formula)
+viewClause (Atom tm) = ([], Atom tm, Conj [])
+viewClause (Clause xs head body) = (xs, head, body)
 viewClause _ = error "Formula is not a clause!"
 
 -- * Automaton Clause
@@ -225,6 +243,7 @@ viewClause _ = error "Formula is not a clause!"
 -- | Explicit representation of an automaton clause.
 data AClause
   = AClause [Id] String (Term Id) Formula
+  | AFf
 
 instance Eq AClause where
   clause1 == clause2 =
@@ -239,6 +258,7 @@ instance Show AClause where
 
 -- | The logical interpretation of an automaton clause.
 clauseToFormula :: AClause -> Formula
+clauseToFormula AFf = Ff
 clauseToFormula (AClause xs p arg body) =
   Clause xs (Atom (App (Sym p) arg)) body
 
@@ -249,6 +269,7 @@ clausesToFormula clauses =
 
 -- | View a formula as a /top-levl/ automaton clause.
 formulaToClause :: Formula -> Maybe AClause
+formulaToClause Ff = Just AFf
 formulaToClause (Atom (App (Sym p) (Sym f))) =
   Just (AClause [] p (Sym f) (Conj []))
 formulaToClause (Clause xs (Atom (App (Sym p) arg@(Apps (Sym f) args))) body) = do
@@ -326,6 +347,10 @@ shift xs env =
     (\env' (x, i) -> HashMap.insert x i env')
     (fmap (+ length xs) env)
     (zip xs [0 ..])
+
+hashFf :: HashFun
+hashFf env =
+  hash "Ff"
 
 hashAtom :: HashFun -> HashFun
 hashAtom t env =

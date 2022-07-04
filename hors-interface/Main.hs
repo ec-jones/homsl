@@ -17,96 +17,96 @@ import qualified Data.HashSet as HashSet
 
 main :: IO ()
 main = do
-  -- group <- readBenchmarks "Bebop/No"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isNo s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt) 
+  group <- readBenchmarks "Bebop/No"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isNo $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt) 
     
-  -- group <- readBenchmarks "Bebop/Yes"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isYes s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt)
+  group <- readBenchmarks "Bebop/Yes"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isYes $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt)
 
-  -- group <- readBenchmarks "Flow/No"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isNo s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt) 
+  group <- readBenchmarks "Flow/No"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isNo $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt) 
 
-  -- group <- readBenchmarks "Flow/Yes"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isYes s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt) 
+  group <- readBenchmarks "Flow/Yes"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isYes $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt) 
 
-  -- group <- readBenchmarks "GTRecS/No"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isNo s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt) 
+  group <- readBenchmarks "GTRecS/No"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isNo $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt) 
 
-  -- group <- readBenchmarks "GTRecS/Yes"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isYes s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt) 
+  group <- readBenchmarks "GTRecS/Yes"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isYes $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt) 
 
-  -- group <- readBenchmarks "TRecS/No"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isNo s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt) 
+  group <- readBenchmarks "TRecS/No"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isNo $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt) 
 
-  -- group <- readBenchmarks "TRecS/Yes"
-  -- forM_ group $ \(problem, (s, clauses)) -> do
-  --   putStrLn problem
-  --   time (isYes s $ saturate (s, clauses)) >>= \case
-  --     Nothing -> putStrLn "Time out!"
-  --     Just dt -> putStrLn ("Time: " ++ show dt)
+  group <- readBenchmarks "TRecS/Yes"
+  forM_ group $ \(problem, clauses) -> do
+    putStrLn problem
+    time (isYes $ saturate clauses) >>= \case
+      Nothing -> putStrLn "Time out!"
+      Just dt -> putStrLn ("Time: " ++ show dt)
 
   group <- readBenchmarks "HorSat/No"
-  forM_ group $ \(problem, (s, clauses)) -> do
+  forM_ group $ \(problem, clauses) -> do
     putStrLn problem
-    time (isNo s $ saturate (s, clauses)) >>= \case
+    time (isNo $ saturate clauses) >>= \case
       Nothing -> putStrLn "Time out!"
       Just dt -> putStrLn ("Time: " ++ show dt) 
 
   group <- readBenchmarks "HorSat/Yes"
-  forM_ group $ \(problem, (s, clauses)) -> do
+  forM_ group $ \(problem, clauses) -> do
     putStrLn problem
-    time (isYes s $ saturate (s, clauses)) >>= \case
+    time (isYes $ saturate clauses) >>= \case
       Nothing -> putStrLn "Time out!"
       Just dt -> putStrLn ("Time: " ++ show dt)  
 
 -- | Verify the output of the benchmark is as expected.
-isNo, isYes :: String -> HashSet.HashSet AClause -> IO ()
-isNo s cs
-  | AClause [] "q0" (Sym s) (Conj []) `elem` cs = pure ()
+isNo, isYes :: HashSet.HashSet AClause -> IO ()
+isNo cs
+  | AFf `elem` cs = pure ()
   | otherwise =  putStrLn "Benchmark failed!"
 
-isYes s cs
-  | AClause [] "q0" (Sym s) (Conj []) `elem` cs = putStrLn "Benchmark failed!"
+isYes cs
+  | AFf `elem` cs = putStrLn "Benchmark failed!"
   | otherwise = pure ()
 
 -- | Read all .hrs problems in a benchmark group.
-readBenchmarks :: String -> IO [(FilePath, (String, [Formula]))]
+readBenchmarks :: String -> IO [(FilePath, [Formula])]
 readBenchmarks group = do
   problems <- listDirectory ("benchmarks/" ++ group ++ "/")
   forM problems $ \problem -> do
-    (s, clauses) <- readBenchmark (group ++ "/" ++ problem)
-    pure (group ++ "/" ++ problem, (s, clauses))
+    clauses <- readBenchmark (group ++ "/" ++ problem)
+    pure (group ++ "/" ++ problem, clauses)
 
 -- | Read a benchmark problem.
-readBenchmark :: FilePath -> IO (String, [Formula])
+readBenchmark :: FilePath -> IO [Formula]
 readBenchmark path =  do
   (rules, trans) <- parseHoRS <$> readFile ("benchmarks/" ++ path)
   pure (horsToHoMSL rules trans)
@@ -115,6 +115,7 @@ readBenchmark path =  do
 runBenchmark :: FilePath -> IO (HashSet.HashSet AClause)
 runBenchmark path = do
   input <- readBenchmark path
+  print input
   pure (saturate input)
 
 -- * Timing facilities
@@ -122,6 +123,6 @@ runBenchmark path = do
 time :: IO () -> IO (Maybe Float)
 time m = do
   !t0 <- getCPUTime 
-  !res <- timeout (10 * 1000000) m
+  !res <- timeout 30000000 m
   !t1 <- getCPUTime
-  pure (fromIntegral (t1 - t0) / 10000000000.0 <$ res)
+  pure (fromIntegral (t1 - t0) / 1000000000.0 <$ res)

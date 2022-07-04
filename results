@@ -1,0 +1,276 @@
+Bebop/No/s20.hrs
+Time: 11683.393
+Bebop/No/t2.hrs
+Time: 497.7747
+Bebop/No/s2.hrs
+Time: 15472.778
+Bebop/No/s800.hrs
+Time out!
+Bebop/No/s400.hrs
+Time out!
+Bebop/No/s1600.hrs
+Time out!
+Bebop/No/t200.hrs
+Time out!
+Bebop/No/t100.hrs
+Time out!
+Bebop/No/s100.hrs
+Time: 26548.32
+Bebop/No/s200.hrs
+Time out!
+Bebop/No/s40.hrs
+Time: 16991.848
+Bebop/Yes/t2.hrs
+Time: 25285.533
+Bebop/Yes/t200.hrs
+Time out!
+Bebop/Yes/t100.hrs
+Time out!
+Bebop/Yes/t400.hrs
+Time out!
+Flow/Yes/cfa-life2.hrs
+Time out!
+Flow/Yes/cfa-psdes.hrs
+Time out!
+Flow/Yes/cfa-matrix-1.hrs
+Time out!
+GTRecS/No/exp2-5-wrong.hrs
+Time: 7021.895
+GTRecS/No/exp3-5-wrong.hrs
+Time out!
+GTRecS/No/twofiles-wrong.hrs
+Time: 2.8179998
+GTRecS/Yes/exp2-1600.hrs
+Time out!
+GTRecS/Yes/nondet.hrs
+Time out!
+GTRecS/Yes/exp2-1.hrs
+Time: 14.1367
+GTRecS/Yes/exp3-100.hrs
+Time out!
+GTRecS/Yes/exp5-6400.hrs
+Time out!
+GTRecS/Yes/exp2-1000.hrs
+Time out!
+GTRecS/Yes/exp3-10.hrs
+Time out!
+GTRecS/Yes/exp3-2.hrs
+Time out!
+GTRecS/Yes/exp4-200.hrs
+Time out!
+GTRecS/Yes/fileocamlc-4.hrs
+Time out!
+GTRecS/Yes/exp4-3200.hrs
+Time out!
+GTRecS/Yes/exp2-10000.hrs
+Time out!
+GTRecS/Yes/exp3-5.hrs
+Time out!
+GTRecS/Yes/exp2-400.hrs
+Time out!
+GTRecS/Yes/exp3-6400.hrs
+Time out!
+GTRecS/Yes/exp4-2.hrs
+Time out!
+GTRecS/Yes/exp5-1600.hrs
+Time out!
+GTRecS/Yes/exp3-400.hrs
+Time out!
+GTRecS/Yes/exp2-3200.hrs
+Time out!
+GTRecS/Yes/exp3-3.hrs
+Time out!
+GTRecS/Yes/exp3-3200.hrs
+Time out!
+GTRecS/Yes/exp5-800.hrs
+Time out!
+GTRecS/Yes/exp5-400.hrs
+Time out!
+GTRecS/Yes/exp4-400.hrs
+Time out!
+GTRecS/Yes/exp4-800.hrs
+Time out!
+GTRecS/Yes/exp4-3.hrs
+Time out!
+GTRecS/Yes/exp5-100.hrs
+Time out!
+GTRecS/Yes/exp5-200.hrs
+Time out!
+GTRecS/Yes/exp3-15.hrs
+Time out!
+GTRecS/Yes/exp3-1.hrs
+Time out!
+GTRecS/Yes/exp2-12800.hrs
+Time out!
+GTRecS/Yes/exp2-100.hrs
+Time out!
+GTRecS/Yes/exp2-10.hrs
+Time: 18522.799
+GTRecS/Yes/exp4-20.hrs
+Time out!
+GTRecS/Yes/exp4-15.hrs
+Time out!
+GTRecS/Yes/exp4-10.hrs
+Time out!
+GTRecS/Yes/twofiles-4.hrs
+Time out!
+GTRecS/Yes/exp4-1.hrs
+Time out!
+GTRecS/Yes/lock2-4.hrs
+Time out!
+GTRecS/Yes/lock2.hrs
+Time out!
+GTRecS/Yes/exp2-15.hrs
+Time out!
+GTRecS/Yes/exp4-1000.hrs
+Time out!
+GTRecS/Yes/exp4-100.hrs
+Time out!
+GTRecS/Yes/exp2-5.hrs
+Time: 9345.554
+GTRecS/Yes/exp2-6400.hrs
+Time out!
+GTRecS/Yes/exp5-10.hrs
+Time out!
+GTRecS/Yes/exp4-1600.hrs
+Time out!
+GTRecS/Yes/exp2-200.hrs
+Time out!
+GTRecS/Yes/exp2-2.hrs
+Time: 1561.9496
+GTRecS/Yes/exp3-1600.hrs
+Time out!
+GTRecS/Yes/exp2-3.hrs
+Time: 2039.0754
+GTRecS/Yes/exp5-3200.hrs
+Time out!
+GTRecS/Yes/example1.hrs
+Time: 2.0228999
+GTRecS/Yes/exp2-800.hrs
+Time out!
+GTRecS/Yes/exp4-50.hrs
+Time out!
+GTRecS/Yes/exp4-6400.hrs
+Time out!
+GTRecS/Yes/exp4-5.hrs
+Time out!
+GTRecS/Yes/exp4-30.hrs
+Time out!
+GTRecS/Yes/exp3-800.hrs
+Time out!
+GTRecS/Yes/exp3-200.hrs
+Time out!
+TRecS/No/example3-1.hrs
+Time: 7.07e-2
+TRecS/No/filewrong.hrs
+Time: 1.8670001
+TRecS/No/ex2ib.hrs
+Time: 3.81e-2
+TRecS/No/file2.hrs
+Time: 5.48e-2
+TRecS/Yes/exception.hrs
+Time: 9.24e-2
+TRecS/Yes/flow.hrs
+Time: 0.252
+TRecS/Yes/order5-2-variant.hrs
+Time out!
+TRecS/Yes/file.hrs
+Time: 0.102
+TRecS/Yes/example2-3.hrs
+Time: 6.7e-2
+TRecS/Yes/fib.hrs
+Time out!
+TRecS/Yes/fileocamlc2.hrs
+Time: 15683.599
+TRecS/Yes/twofiles.hrs
+Time out!
+TRecS/Yes/lock1.hrs
+Time: 10.0289
+TRecS/Yes/stress.hrs
+Time: 0.1565
+TRecS/Yes/merge.hrs
+Time out!
+TRecS/Yes/merge4.hrs
+Time out!
+TRecS/Yes/rev.hrs
+Time: 11.5433
+TRecS/Yes/order5.hrs
+Time out!
+TRecS/Yes/fileocamlc.hrs
+Time out!
+TRecS/Yes/lock2.hrs
+Time out!
+TRecS/Yes/fileorder5-2.hrs
+Time out!
+TRecS/Yes/order5-2.hrs
+Time out!
+TRecS/Yes/guess.hrs
+Time: 1.1341
+TRecS/Yes/fileocamlc-old.hrs
+Time: 16842.076
+TRecS/Yes/twofilesexn.hrs
+Time out!
+TRecS/Yes/merge3.hrs
+Time out!
+TRecS/Yes/example2-1.hrs
+Time: 8.12e-2
+TRecS/Yes/fileocamlc-simple.hrs
+Time: 1150.3026
+TRecS/Yes/m91.hrs
+Time out!
+TRecS/Yes/order5-variant.hrs
+Time out!
+TRecS/Yes/merge2.hrs
+Time out!
+TRecS/Yes/order4.hrs
+Time out!
+TRecS/Yes/foo.hrs
+Time: 1.7407
+HorSat/No/search-e-church.hrs
+Time out!
+HorSat/No/tak.hrs
+Time out!
+HorSat/No/filter-nonzero.hrs
+Time out!
+HorSat/No/filewrong.hrs
+Time: 1.5511
+HorSat/No/xhtmlf-div-2.hrs
+Time out!
+HorSat/Yes/fold_fun_list.hrs
+Time out!
+HorSat/Yes/jwig-cal_main.hrs
+Time out!
+HorSat/Yes/specialize_cps_coerce1-c.hrs
+Time out!
+HorSat/Yes/filepath.hrs
+Time out!
+HorSat/Yes/xhtmlf-m-church.hrs
+Time out!
+HorSat/Yes/cfa-life2.hrs
+Time out!
+HorSat/Yes/cfa-psdes.hrs
+Time out!
+HorSat/Yes/dna.hrs
+Time out!
+HorSat/Yes/zip.hrs
+Time out!
+HorSat/Yes/filter-nonzero-1.hrs
+Time out!
+HorSat/Yes/order5.hrs
+Time out!
+HorSat/Yes/fileocamlc.hrs
+Time out!
+HorSat/Yes/lock2.hrs
+Time out!
+HorSat/Yes/l.hrs
+Time out!
+HorSat/Yes/fold_right.hrs
+Time out!
+HorSat/Yes/fibstring.hrs
+Time out!
+HorSat/Yes/cfa-matrix-1.hrs
+Time out!
+HorSat/Yes/exp4-5.hrs
+Time out!
+HorSat/Yes/map-plusone-2.hrs
+Time out!

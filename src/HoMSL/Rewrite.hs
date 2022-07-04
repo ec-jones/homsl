@@ -15,8 +15,8 @@ import HoMSL.Syntax
 import Debug.Trace
 
 -- | Satuate a set of clauses.
-saturate :: (String, [Formula]) -> HashSet.HashSet AClause
-saturate (s, clauses) = go HashMap.empty HashSet.empty clauses
+saturate :: [Formula] -> HashSet.HashSet AClause
+saturate clauses = go HashMap.empty HashSet.empty clauses
   where
     go :: HashMap.HashMap Formula (Maybe (Term Id)) -> HashSet.HashSet AClause -> [Formula] -> HashSet.HashSet AClause
     go seen autos [] = autos
@@ -28,10 +28,10 @@ saturate (s, clauses) = go HashMap.empty HashSet.empty clauses
             -- Rewrite the body of non-automaton clause.
             let (xs, head, body) = viewClause clause
                 (reducts, First selected) = runWriter $ observeAllT (step autos xs body)
-                clauses' = Clause xs (Atom head) <$> reducts
+                clauses' = Clause xs head <$> reducts
              in go (HashMap.insert clause selected seen) autos (clauses' ++ clauses)
         Just auto
-          | AClause _ "q0" (Sym s') _ <- auto, s == s' -> HashSet.insert auto autos
+          | AFf <- auto -> HashSet.insert auto autos
           | auto `HashSet.member` autos -> go seen autos clauses
           | otherwise ->
             -- Find clauses that are relevant to the new automaton clause.
@@ -43,7 +43,7 @@ saturate (s, clauses) = go HashMap.empty HashSet.empty clauses
     
 
 -- | Rewrite the body of a non-automaton clause.
--- The function also emits any atom that were selected.
+-- The function also emits the selected atom.
 step :: 
   HashSet.HashSet AClause -> -- ^ Global automaton clauses
   [Id] -> -- ^ Subjects of the formula.

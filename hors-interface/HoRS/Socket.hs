@@ -1,12 +1,7 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
-module Socket
+module HoRS.Socket
   ( -- * Socket Interface
     Addr,
     SocketM,
@@ -29,13 +24,11 @@ module Socket
 where
 
 import qualified Control.Monad.RWS as RWS
-import qualified Control.Selective as Selective
+-- import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
 import HoMSL.Rewrite
 import HoMSL.Syntax
 import HoMSL.Syntax.Parser
-
--- TODO: conver to HoRS first?
 
 -- * Socket Interface
 
@@ -75,9 +68,9 @@ instance Applicative (SocketM soc) where
     x <- mx
     pure (f x)
 
-instance Selective.Selective (SocketM soc) where
-  select cond m =
-    Branch (Pure undefined) (m <*> Pure undefined)
+-- instance Selective.Selective (SocketM soc) where
+--   select cond m =
+--     Branch (Pure undefined) (m <*> Pure undefined)
 
 instance Monad (SocketM soc) where
   Pure a >>= k = k a
@@ -212,7 +205,7 @@ getLiftedArgs = do
 getClauses :: (forall soc. Socket soc => SocketM soc ()) -> [Formula]
 getClauses m =
   let (main, defns) = RWS.evalRWS (go m) 0 0
-   in (mkGoal main : [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns])
+   in mkGoal main : [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns]
   where
     go :: SocketM SocketId c -> AnalysisM (Term Id)
     go (Pure a) = pure (Var cont)
@@ -321,13 +314,13 @@ server = do
   (x, y) <- accept soc
   fix () $ \() k -> do
     msg <- receive x
-    send soc "pong"
+    send x "pong"
     k ()
 
 test :: IO ()
 test = do
   automaton <- parseProgram <$> readFile "input/socket"
   let prog = getClauses server
-      (_, clauses) = satisfiable (tableClauses (prog ++ automaton))
+      clauses = saturate (automaton ++ prog)
   RWS.forM_ clauses $ \clause ->
     print clause

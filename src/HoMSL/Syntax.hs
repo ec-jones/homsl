@@ -18,6 +18,7 @@ module HoMSL.Syntax
 
     -- * Formulas,
     Formula,
+    pattern Ff,
     pattern Atom,
     pattern Conj,
     pattern Exists,

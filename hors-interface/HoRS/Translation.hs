@@ -15,7 +15,7 @@ import HoRS.Syntax
 import Debug.Trace
 
 -- | Conver a HoRS problem into a clause set.
-horsToHoMSL :: [Rule] -> [Transition] -> (String, [Formula])
+horsToHoMSL :: [Rule] -> [Transition] -> [Formula]
 horsToHoMSL rules trans =
   let env = inferSorts (rules, trans)
       -- Inital non-terminal
@@ -25,12 +25,15 @@ horsToHoMSL rules trans =
       -- Terminals
       fs = HashMap.keys $ HashMap.filterWithKey (\f s -> 
                                   not (isPredicate s) && isLower (head f)) env
-   in (s, 
+   in mkGoal s :  
           foldMap (mkOpTransitionClauses env trans) [ (q, f) | q <- qs, f <- fs ]
             <> foldMap (mkRuleClauses qs env) rules
-         )
 
 -- * Constructing HoMSL clauses.
+
+-- | Make the goal clause.
+mkGoal :: String -> Formula
+mkGoal s = Clause [] Ff (Atom (App (Sym "q0") (Sym s)))
 
 -- | Make a transition clause.
 mkOpTransitionClauses :: HashMap.HashMap String Sort -> [Transition] -> (String, String) -> [Formula]
