@@ -40,9 +40,15 @@ inferRuleSort (Rule f xs rhs) = do
 -- | Infer sorts for a transition.
 inferTransSort :: Transition -> StateT (HashMap.HashMap String (USort s)) (ST s) ()
 inferTransSort (Transition q f rhs) = do
+  -- Add states
   s <- lookupSort q
   lift $ unify s (UFun UI UO)
+  forM_ rhs $ \qs' -> 
+    forM_ qs' $ \q' -> do
+      s <- lookupSort q'
+      lift $ unify s (UFun UI UO)
 
+  -- Ensure arity
   t <- lookupSort f
   go t (maybe 0 fst (IntMap.lookupMax rhs))
   where
