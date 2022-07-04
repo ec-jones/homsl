@@ -19,7 +19,7 @@ saturate = go HashMap.empty HashSet.empty
     go :: HashMap.HashMap Formula [Term Id] -> HashSet.HashSet AClause -> [Formula] -> HashSet.HashSet AClause
     go seen autos [] = autos
     go seen autos (clause : clauses) =
-      case formulaToClause (traceShowId clause) of
+      case formulaToClause clause of
         Nothing
           | clause `HashMap.member` seen -> go seen autos clauses
           | otherwise ->
@@ -36,7 +36,7 @@ saturate = go HashMap.empty HashSet.empty
                                       any (relevantAtom auto) selected ]
                 seen' = foldl' (flip HashMap.delete) seen relevant
              in
-              trace ("Relevant: " ++ show relevant) $ go seen' (HashSet.insert auto autos) (relevant ++ clauses)
+              go seen' (HashSet.insert auto autos) (relevant ++ clauses)
     
 
 -- | Rewrite the body of a non-automaton clause.
@@ -53,7 +53,7 @@ rewrite autos subjects fm =
         -> HashSet.HashSet AClause -- ^ Local and global automaton clauses
         -> Formula -- ^ Formula to rewrite
         -> LogicT (Writer [Term Id]) Formula
-    go scope autos (Atom atom@(App (Sym p) arg@(Apps (Sym f) ss))) = defaultTo (Atom atom) $ do
+    go scope autos (Atom atom@(App (Sym p) arg@(Apps (Sym f) ss))) = do
       -- (Step)
       select atom
       
@@ -61,18 +61,18 @@ rewrite autos subjects fm =
       guard (p == p')
 
       inst <- match xs arg' arg
-      go scope autos (subst inst body)
+      pure (subst inst body)
     go scope autos (Atom atom@(App (Sym p) arg@(Var x)))
-      | x `elem` subjects = pure (Atom atom)
-      | otherwise = defaultTo (Atom atom) $ do
+      | x `elem` subjects = empty
+      | otherwise = do
         -- (Refl)
         AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
         guard (p == p')
 
         inst <- match xs arg' arg
-        go scope autos (subst inst body)
+        pure (subst inst body)
     go scope autos (Atom atom@(App (Sym p) arg@(Apps (Var x) ss)))
-      | x `elem` subjects = defaultTo (Atom atom) $ do
+      | x `elem` subjects = do
         -- (Assm)
         select atom
 
@@ -92,30 +92,36 @@ rewrite autos subjects fm =
             body' = subst rho (restrictBody ys body)
             head' = App (Sym p) (Apps (Var x) (map Var ys'))
 
-        go scope autos (Conj [subst inst body', Clause ys' (Atom head') body'])
-      | otherwise = defaultTo (Atom atom) $ do
+        pure (Conj [subst inst body', Clause ys' (Atom head') body'])
+      | otherwise = do
         -- (Step)
         AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
         guard (p == p')
 
         inst <- match xs arg' arg
-        go scope autos (subst inst body)
+        pure (subst inst body)
     go scope autos (Atom _) = error "Atom is not well-formed!"
-    go scope autos (Conj []) = pure (Conj [])
-    go scope autos (Conj (fm : fms)) = do
-      -- (AndL/R)
-      fm' <- go scope autos fm
-      fms' <- go scope autos (Conj fms)
-      pure (Conj [fm', fms'])
+    go scope autos (Conj []) = empty
+    go scope autos (Conj (fm : fms)) = 
+      (do
+        -- (AndL)
+        fm' <- go scope autos fm
+        pure (Conj (fm' : fms))
+      ) `cut` (
+        do
+          -- (AndR)
+          fms' <- go scope autos (Conj fms)
+          pure (Conj [fm, fms'])
+      )
     go scope autos (Exists _ _) = error "Existentials are not yet supported!"
     go scope autos (Clause xs head body)
       | all (`notElem` xs) (freeVars head) = do
         -- (Scope1)
-        go scope autos head
+        pure head
       | Atom (App (Sym p) arg@(Apps (Var x) ss)) <- head,
         x `elem` subjects,
         all (\s -> any (\x -> s == Var x) xs) ss = 
-          pure (Clause xs head body)
+          empty
       | otherwise = do
           -- (Imp)
           let (scope', xs') = uniqAways scope xs
@@ -128,19 +134,16 @@ rewrite autos subjects fm =
           head' <- go scope' (autos <> autos') (subst rho head)
           if all (`notElem` xs') (freeVars head')
             then pure head'
-            else
-              -- (ImpImp) does not appear in completeness proof
-              -- Therefore, the only way to recover is through (Scope1).
-              empty
+            else pure (Clause xs' head' body')
 
 -- | Mark an atom as selected.
 select :: Term Id -> LogicT (Writer [Term Id]) ()
 select atom = lift (tell [atom])
 
-defaultTo :: MonadLogic m => a -> m a -> m a
-defaultTo x xs =
+cut :: MonadLogic m => m a -> m a -> m a
+cut xs ys =
   msplit xs >>= \case
-    Nothing -> pure x
+    Nothing -> ys
     Just _ -> xs
 
 -- | Check if the atom could be resolved with the clause.
