@@ -1,7 +1,3 @@
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RecursiveDo #-}
-
 module HoMSL.Rewrite
   ( saturate) where
 
