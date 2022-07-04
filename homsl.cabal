@@ -67,7 +67,7 @@ executable hors-interface
 
   build-depends:      base,
                       mtl,
-                      -- selective,
+                      selective,
                       containers,
                       unordered-containers,
                       homsl,

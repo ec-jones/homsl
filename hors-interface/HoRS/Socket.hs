@@ -24,7 +24,7 @@ module HoRS.Socket
 where
 
 import qualified Control.Monad.RWS as RWS
--- import qualified Control.Selective as Selective
+import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
 import HoMSL.Rewrite
 import HoMSL.Syntax
@@ -68,9 +68,9 @@ instance Applicative (SocketM soc) where
     x <- mx
     pure (f x)
 
--- instance Selective.Selective (SocketM soc) where
---   select cond m =
---     Branch (Pure undefined) (m <*> Pure undefined)
+instance Selective.Selective (SocketM soc) where
+  select cond m =
+    Branch (Pure undefined) (m <*> Pure undefined)
 
 instance Monad (SocketM soc) where
   Pure a >>= k = k a
