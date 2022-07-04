@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module HoMSL.Rewrite
   ( saturate) where
 
@@ -15,67 +17,67 @@ import Debug.Trace
 saturate :: [Formula] -> HashSet.HashSet AClause
 saturate = go HashMap.empty HashSet.empty
   where
-    go :: HashMap.HashMap Formula (Maybe (Term Id)) -> HashSet.HashSet AClause -> [Formula] -> HashSet.HashSet AClause
+    go :: HashMap.HashMap Formula [Term Id] -> HashSet.HashSet AClause -> [Formula] -> HashSet.HashSet AClause
     go seen autos [] = autos
     go seen autos (clause : clauses) =
       case formulaToClause clause of
         Nothing
           | clause `HashMap.member` seen -> go seen autos clauses
           | otherwise ->
-            let (clauses', selected) = stepWith autos clause
+            let (clauses', selected) = rewriteWith autos clause
              in go (HashMap.insert clause selected seen) autos (clauses' ++ clauses)
         Just auto
           | auto `HashSet.member` autos -> go seen autos clauses
           | otherwise ->
             -- Find, and resaturate, clauses that are relevant to the new automaton clause
-            let relevant = [ clause | (clause, Just selected) <- HashMap.toList seen,
-                                      relevantAtom selected auto ]
-                reducts = concatMap (fst . stepWith (HashSet.singleton auto)) relevant
+            let relevant = [ clause | (clause, selected) <- HashMap.toList seen,
+                                      any (relevantAtom auto) selected ]
+                reducts = concatMap (fst . rewriteWith (HashSet.singleton auto)) relevant
              in 
               go seen (HashSet.insert auto autos) (reducts ++ clauses)
     
-    stepWith :: HashSet.HashSet AClause -> Formula -> ([Formula], Maybe (Term Id))
-    stepWith autos clause =
+    rewriteWith :: HashSet.HashSet AClause -> Formula -> ([Formula], [Term Id])
+    rewriteWith autos clause =
       let (xs, head, body) = viewClause clause
-          (reducts, First selected) = runWriter $ observeAllT (step autos xs body)
+          (reducts, selected) = runWriter $ observeAllT (rewrite autos xs body)
        in (Clause xs (Atom head) <$> reducts, selected)
 
--- | Make a single reduction step in a non-automaton body.
--- The function also emits the selected atom (if it could be resolved with new top-level clauses).
-step :: 
+-- | Make a reduction step in a non-automaton body.
+-- The function also emits any selected atom.
+rewrite :: 
   HashSet.HashSet AClause -> -- ^ Global automaton clauses
   [Id] -> -- ^ Subjects of the formula.
   Formula -> -- ^ Body of a clause.
-  LogicT (Writer (First (Term Id))) Formula
-step autos subjects fm =
+  LogicT (Writer [Term Id]) Formula
+rewrite autos subjects fm =
   go (HashSet.fromList subjects) autos fm
   where
     go :: Scope -- ^ Variables in scope
         -> HashSet.HashSet AClause -- ^ Local and global automaton clauses
         -> Formula -- ^ Formula to rewrite
-        -> LogicT (Writer (First (Term Id))) Formula
-    go scope autos (Atom atom@(App (Sym p) arg@(Apps (Sym f) ss))) = do
+        -> LogicT (Writer [Term Id]) Formula
+    go scope autos (Atom atom@(App (Sym p) arg@(Apps (Sym f) ss))) = defaultTo (Atom atom) $ do
       -- (Step)
-      lift (tell (pure atom))
+      select atom
       
       AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
       guard (p == p')
 
       inst <- match xs arg' arg
-      pure (subst inst body)
+      go scope autos (subst inst body)
     go scope autos (Atom atom@(App (Sym p) arg@(Var x)))
-      | x `elem` subjects = empty
-      | otherwise = do
+      | x `elem` subjects = pure (Atom atom)
+      | otherwise = defaultTo (Atom atom) $ do
         -- (Refl)
         AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
         guard (p == p')
 
         inst <- match xs arg' arg
-        pure (subst inst body)
+        go scope autos (subst inst body)
     go scope autos (Atom atom@(App (Sym p) arg@(Apps (Var x) ss)))
-      | x `elem` subjects = do
+      | x `elem` subjects = defaultTo (Atom atom) $ do
         -- (Assm)
-        lift (tell (pure atom))
+        select atom
 
         AClause xs p' _ body <- msum (pure <$> HashSet.toList autos)
         guard (p == p')
@@ -93,35 +95,30 @@ step autos subjects fm =
             body' = subst rho (restrictBody ys body)
             head' = App (Sym p) (Apps (Var x) (map Var ys'))
 
-        pure (Conj [subst inst body', Clause ys' (Atom head') body'])
-      | otherwise = do
+        go scope autos (Conj [subst inst body', Clause ys' (Atom head') body'])
+      | otherwise = defaultTo (Atom atom) $ do
         -- (Step)
         AClause xs p' arg' body <- msum (pure <$> HashSet.toList autos)
         guard (p == p')
 
         inst <- match xs arg' arg
-        pure (subst inst body)
+        go scope autos (subst inst body)
     go scope autos (Atom _) = error "Atom is not well-formed!"
-    go scope autos (Conj []) = empty
-    go scope autos (Conj (fm : fms)) =
-      case formulaToNestedClauses subjects fm of
-        Nothing -> do
-          -- (AndL)
-          fm' <- go scope autos fm
-          pure (Conj (fm' : fms))
-        Just _ -> do
-          -- (AndR)
-          fms' <- go scope autos (Conj fms)
-          pure (Conj [fm, fms'])
+    go scope autos (Conj []) = pure (Conj [])
+    go scope autos (Conj (fm : fms)) = do
+      -- (AndL/R)
+      fm' <- go scope autos fm
+      fms' <- go scope autos (Conj fms)
+      pure (Conj [fm', fms'])
     go scope autos (Exists _ _) = error "Existentials are not yet supported!"
     go scope autos (Clause xs head body)
       | all (`notElem` xs) (freeVars head) = do
         -- (Scope1)
-        pure head
+        go scope autos head
       | Atom (App (Sym p) arg@(Apps (Var x) ss)) <- head,
-        x `elem` subjects = empty
+        x `elem` subjects = pure (Clause xs head body)
       | otherwise = do
-          -- (ImpImp)
+          -- (Imp)
           let (scope', xs') = uniqAways scope xs
               rho = mkRenaming (zip xs xs')
               body' = subst rho body
@@ -132,11 +129,21 @@ step autos subjects fm =
           head' <- go scope' (autos' <> autos) (subst rho head)
           pure (Clause xs' head' body')
 
+-- | Mark an atom as selected.
+select :: Term Id -> LogicT (Writer [Term Id]) ()
+select atom = lift (tell [atom])
+
+defaultTo :: MonadLogic m => a -> m a -> m a
+defaultTo x xs =
+  msplit xs >>= \case
+    Nothing -> pure x
+    Just (y, ys) -> reflect (Just (y, ys))
+
 -- | Check if the atom could be resolved with the clause.
-relevantAtom :: Term Id -> AClause -> Bool
-relevantAtom (App (Sym p) (Apps (Sym f) _)) (AClause _ p' (Apps (Sym f') _) _) =
+relevantAtom :: AClause -> Term Id -> Bool
+relevantAtom (AClause _ p' (Apps (Sym f') _) _) (App (Sym p) (Apps (Sym f) _)) =
   p == p' && f == f'
-relevantAtom (App (Sym p) (Apps (Var x) ss)) (AClause xs p' _ _) =
+relevantAtom (AClause xs p' _ _) (App (Sym p) (Apps (Var x) ss)) =
   p == p' && 
     let ys = drop (length xs - length ss) xs
      in sortArgs (idSort x) == map idSort ys
