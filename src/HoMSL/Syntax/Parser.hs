@@ -61,7 +61,7 @@ pClause = do
       )
       <|> pure []
 
-  local (HashMap.fromList [(x.name, x) | x <- xs] <>) $ do
+  local (HashMap.fromList [(idName x, x) | x <- xs] <>) $ do
     head <- pHead
 
     body <-

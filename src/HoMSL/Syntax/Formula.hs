@@ -35,11 +35,11 @@ import HoMSL.Syntax.Term
 -- | General logical formulas.
 data Formula = Formula
   { -- | The underlying shape of a formula.
-    shape :: FormulaShape,
+    formulaShape :: FormulaShape,
     -- | The free variables in a formula.
-    freeVars :: Scope,
+    formulaFreeVars :: Scope,
     -- | Given de Buijn indicies hash the formula.
-    hash :: HashFun
+    formulaHash :: HashFun
   }
 
 -- | The underlying shape of formula.
@@ -86,7 +86,7 @@ instance Eq Formula where
 -- | Equality and hashing check for alpha equivalence.
 instance Hashable Formula where
   hashWithSalt s f =
-    hashWithSalt s (f.hash HashMap.empty)
+    hashWithSalt s (formulaHash f HashMap.empty)
 
 instance Show Formula where
   showsPrec p (Atom t) = showsPrec p t
@@ -114,18 +114,18 @@ instance Show Formula where
     showParen (p > 1) (showString "exists " . shows x . showString ". " . showsPrec 2 body)
 
 instance Substable Formula where
-  freeVars fm = fm.freeVars
+  freeVars = formulaFreeVars
 
   subst theta (Atom t) =
     Atom (subst theta t)
   subst theta (Conj fs) =
     Conj (subst theta <$> fs)
   subst theta f@(Exists x body) =
-    let (_, x') = uniqAway (theta.scope <> freeVars f) x
+    let (_, x') = uniqAway (substScope theta <> freeVars f) x
         theta' = mkRenaming [(x, x')] <> theta
      in Exists x' (subst theta' body)
   subst theta f@(Clause xs head body) =
-    let (_, xs') = uniqAways (theta.scope <> freeVars f) xs
+    let (_, xs') = uniqAways (substScope theta <> freeVars f) xs
         theta' = mkRenaming (zip xs xs') <> theta
      in Clause xs' (subst theta' head) (subst theta' body)
 
@@ -136,19 +136,19 @@ instance Substable Formula where
 -- | An atomic formula.
 pattern Atom :: Term Id -> Formula
 pattern Atom t <-
-  Formula {shape = Atom_ t}
+  Formula {formulaShape = Atom_ t}
   where
     Atom t =
       Formula
-        { shape = Atom_ t,
-          freeVars = freeVars t,
-          hash = hashAtom (hashTerm t)
+        { formulaShape = Atom_ t,
+          formulaFreeVars = freeVars t,
+          formulaHash = hashAtom (hashTerm t)
         }
 
 -- | A conjunction of formulas.
 pattern Conj :: [Formula] -> Formula
 pattern Conj fs <-
-  Formula {shape = Conj_ (HashSet.toList -> fs)}
+  Formula {formulaShape = Conj_ (HashSet.toList -> fs)}
   where
     Conj = flattenConj mempty
 
@@ -158,9 +158,9 @@ flattenConj (fs, fvs) []
   | [f] <- HashSet.toList fs = f
   | otherwise =
       Formula
-        { shape = Conj_ fs,
-          freeVars = fvs,
-          hash = hashConj [f.hash | f <- HashSet.toList fs]
+        { formulaShape = Conj_ fs,
+          formulaFreeVars = fvs,
+          formulaHash = hashConj [formulaHash f | f <- HashSet.toList fs]
         }
 flattenConj (fs, fvs) (g@(Conj hs) : gs) =
   flattenConj
@@ -190,9 +190,9 @@ pattern Exists x body <-
     Exists x body
       | x `HashSet.member` freeVars body =
           Formula
-            { shape = Exists_ x body,
-              freeVars = HashSet.delete x (freeVars body),
-              hash = hashExists x body.hash
+            { formulaShape = Exists_ x body,
+              formulaFreeVars = HashSet.delete x (freeVars body),
+              formulaHash = hashExists x (formulaHash body)
             }
       | otherwise = body
 
@@ -207,11 +207,11 @@ pattern Clause xs head body <-
       Conj [Clause xs head body | head <- heads]
     Clause xs head body =
       Formula
-        { shape = Clause_ xs head body,
-          freeVars =
+        { formulaShape = Clause_ xs head body,
+          formulaFreeVars =
             (freeVars body <> freeVars head)
               `HashSet.difference` HashSet.fromList xs,
-          hash = hashClause xs head.hash body.hash
+          formulaHash = hashClause xs (formulaHash head) (formulaHash body)
         }
 
 -- | View a formula as a (non-automaton) definite clause.
@@ -334,7 +334,7 @@ hashAtom t env =
 hashTerm :: Term Id -> HashFun
 hashTerm (Var x) env =
   case HashMap.lookup x env of
-    Nothing -> hash ("Free", x.unique)
+    Nothing -> hash ("Free", idUnique x)
     Just i -> hash ("Bound", i)
 hashTerm (Sym f) env = hash ("Sym", f)
 hashTerm (App fun arg) env =

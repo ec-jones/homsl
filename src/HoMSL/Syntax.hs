@@ -37,7 +37,7 @@ module HoMSL.Syntax
     uniqAways,
 
     -- * Substitutions
-    Subst (scope),
+    Subst (substScope),
     mkSubst,
     mkRenaming,
     lookupSubst,

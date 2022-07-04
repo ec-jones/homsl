@@ -6,7 +6,7 @@ module HoMSL.Syntax.Subst
     uniqAways,
 
     -- * Substitutions
-    Subst (scope),
+    Subst (substScope),
     mkSubst,
     mkRenaming,
     lookupSubst,
@@ -32,7 +32,7 @@ type Scope = HashSet.HashSet Id
 uniqAway :: Scope -> Id -> (Scope, Id)
 uniqAway scope x
   | x `HashSet.member` scope =
-      let x' = x {unique = (maximum scope).unique + 1}
+      let x' = x {idUnique = idUnique (maximum scope) + 1}
        in (HashSet.insert x' scope, x')
   | otherwise =
       (HashSet.insert x scope, x)
@@ -45,21 +45,20 @@ uniqAways = mapAccumL uniqAway
 
 -- | A finite map from identifiers to terms.
 data Subst = Subst
-  { map :: HashMap.HashMap Id (Term Id),
+  { substMap :: HashMap.HashMap Id (Term Id),
     -- | The scope of resulting terms.
-    scope :: Scope
+    substScope :: Scope
   }
 
 instance Show Subst where
-  show theta =
-    show theta.map
+  show = show . substMap
 
 -- | N.B. Subst form a monoid under (left bias) /union/ not /composition/.
 instance Semigroup Subst where
   theta1 <> theta2 =
     Subst
-      { map = theta1.map <> theta2.map,
-        scope = theta1.scope <> theta2.scope
+      { substMap = substMap theta1 <> substMap theta2,
+        substScope = substScope theta1 <> substScope theta2
       }
 
 -- | N.B. Subst form a monoid under (left bias) /union/ not /composition/.
@@ -70,29 +69,29 @@ instance Monoid Subst where
 mkSubst :: [(Id, Term Id)] -> Subst
 mkSubst xts =
   Subst
-    { map = HashMap.fromList xts,
-      scope = foldMap (freeVars . snd) xts
+    { substMap = HashMap.fromList xts,
+      substScope = foldMap (freeVars . snd) xts
     }
 
 -- | Make a substitution that only maps variables to variables.
 mkRenaming :: [(Id, Id)] -> Subst
 mkRenaming xys =
   Subst
-    { map = HashMap.fromList [(x, Var y) | (x, y) <- xys],
-      scope = HashSet.fromList [y | (_, y) <- xys]
+    { substMap = HashMap.fromList [(x, Var y) | (x, y) <- xys],
+      substScope = HashSet.fromList [y | (_, y) <- xys]
     }
 
 -- | Lookup the value to which a variable is mapped.
 lookupSubst :: Id -> Subst -> Maybe (Term Id)
-lookupSubst x theta =
-  HashMap.lookup x theta.map
+lookupSubst x =
+  HashMap.lookup x . substMap
 
 -- | Extend a substitution with a mapping.
 extendSubst :: Id -> Term Id -> Subst -> Subst
 extendSubst x term theta = 
   Subst {
-    map = HashMap.insert x term theta.map,
-    scope = freeVars term <> theta.scope
+    substMap = HashMap.insert x term (substMap theta),
+    substScope = freeVars term <> substScope theta
   }
 
 -- * Substable
@@ -113,7 +112,7 @@ instance Substable (Term Id) where
   subst theta =
     ( >>=
         \x ->
-          case HashMap.lookup x theta.map of
+          case HashMap.lookup x (substMap theta) of
             Nothing -> Var x
             Just tm -> tm
     )

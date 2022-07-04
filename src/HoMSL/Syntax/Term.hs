@@ -28,28 +28,28 @@ import GHC.Generics
 -- | An identifier
 data Id = Id
   { -- | The original name.
-    name :: !String,
+    idName :: !String,
     -- | The sort of the identifier
-    sort :: !Sort,
+    idSort :: !Sort,
     -- | A unique used to avoid capture.
-    unique :: {-# UNPACK #-} !Int
+    idUnique :: {-# UNPACK #-} !Int
   }
 
 instance Eq Id where
   x == y =
-    x.unique == y.unique
+    idUnique x == idUnique y
 
 instance Ord Id where
   x <= y =
-    x.unique <= y.unique
+    idUnique x <= idUnique y
 
 instance Hashable Id where
-  hashWithSalt s x =
-    hashWithSalt s x.unique
+  hashWithSalt s =
+    hashWithSalt s . idUnique
 
 instance Show Id where
   showsPrec _ x =
-    showString x.name . showString "_" . shows x.unique
+    showString (idName x) . showString "_" . shows (idUnique x)
 
 -- * Sorts
 

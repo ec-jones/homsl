@@ -13,7 +13,7 @@ library
   other-modules:      HoMSL.Syntax.Term,
                       HoMSL.Syntax.Formula,
                       HoMSL.Syntax.Subst,
-                      Control.Monad.Memoization
+                      -- Control.Monad.Memoization
 
   hs-source-dirs:     src
 
@@ -39,51 +39,50 @@ library
                       -Wno-unused-local-binds
                       -Wno-name-shadowing
 
+                      -fprof-auto
+
   default-extensions: DerivingVia
                       DeriveTraversable
                       DeriveGeneric
                       GeneralizedNewtypeDeriving
                       DeriveAnyClass
 
-                      OverloadedRecordDot
-                      NoFieldSelectors
-                      RecordWildCards
-                      DisambiguateRecordFields
-
                       ScopedTypeVariables
                       FlexibleInstances
                       FlexibleContexts
-                      InstanceSigs                   
+                      InstanceSigs                  
   
-  default-language: Haskell2010
+  default-language:   Haskell2010
 
 executable hors-interface
-  main-is:          Main.hs
+  main-is:            Main.hs
 
-  hs-source-dirs:   hors-interface
+  hs-source-dirs:     hors-interface
 
-  build-depends:    base,
-                    mtl,
-                    containers,
-                    unordered-containers,
-                    homsl,
-                    directory,
-                    parsec,
-                    criterion
+  build-depends:      base,
+                      mtl,
+                      containers,
+                      unordered-containers,
+                      homsl,
+                      directory,
+                      parsec,
+                      -- criterion
 
-  ghc-options:      -Wall
-                    -Wcompat
-                    -Widentities
-                    -Wincomplete-uni-patterns
-                    -Wincomplete-record-updates
-                    -Wredundant-constraints
-                    -Wmissing-export-lists
-                    -Wpartial-fields
-                    -Wmissing-deriving-strategies
-                    -Wunused-packages
+  ghc-options:        -Wall
+                      -Wcompat
+                      -Widentities
+                      -Wincomplete-uni-patterns
+                      -Wincomplete-record-updates
+                      -Wredundant-constraints
+                      -Wmissing-export-lists
+                      -Wpartial-fields
+                      -Wmissing-deriving-strategies
+                      -Wunused-packages
 
-                    -Wno-unused-matches
-                    -Wno-name-shadowing
-                    -Wno-unused-local-binds
-  
-  default-language: Haskell2010
+                      -Wno-unused-matches
+                      -Wno-name-shadowing
+                      -Wno-unused-local-binds
+
+                      -fprof-auto
+
+  default-language:   Haskell2010
