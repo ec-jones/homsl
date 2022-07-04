@@ -132,9 +132,7 @@ rewrite autos subjects fm =
           let Just autos' = formulaToNestedClauses xs' body'
 
           head' <- go scope' (autos <> autos') (subst rho head)
-          if all (`notElem` xs') (freeVars head')
-            then pure head'
-            else pure (Clause xs' head' body')
+          pure (Clause xs' head' body')
 
 -- | Mark an atom as selected.
 select :: Term Id -> LogicT (Writer [Term Id]) ()
