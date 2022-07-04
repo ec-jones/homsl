@@ -86,7 +86,7 @@ step autos subjects fm =
 
         -- Drop partially applied variables.
         let ys = drop (length xs - length ss) xs
-        guard (sortArgs x.sort == map (.sort) ys)
+        guard (sortArgs (idSort x) == map idSort ys)
 
         -- Create fresh instance.
         let (_, ys') = uniqAways scope ys
@@ -143,7 +143,7 @@ relevantAtom (App (Sym p) (Apps (Sym f) _)) (AClause _ p' (Apps (Sym f') _) _) =
 relevantAtom (App (Sym p) (Apps (Var x) ss)) (AClause xs p' _ _) =
   p == p' && 
     let ys = drop (length xs - length ss) xs
-     in sortArgs x.sort == map (.sort) ys
+     in sortArgs (idSort x) == map idSort ys
 relevantAtom _ _ = False
 
 -- -- | Reduce a formula to automaton form.
