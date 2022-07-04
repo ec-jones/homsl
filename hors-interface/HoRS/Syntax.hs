@@ -24,7 +24,7 @@ import Text.Parsec.Token
 data Transition = Transition
   { state :: String,
     symbol :: String,
-    children :: IntMap.IntMap String
+    rhs :: IntMap.IntMap [String]
   }
   deriving stock (Show)
 
@@ -95,7 +95,7 @@ pTransition = do
 
       reservedOp lexer "."
 
-      pure (Transition q f $ IntMap.fromList rhs)
+      pure (Transition q f $ fmap pure $ IntMap.fromList rhs)
     ) <|>
       (do
             reservedOp lexer "->."

@@ -8,25 +8,46 @@ import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
 import HoMSL.Syntax
+import Data.Char
 import HoRS.Inference
+import Data.Foldable
 import HoRS.Syntax
+import Debug.Trace
 
 -- | Conver a HoRS problem into a clause set.
 horsToHoMSL :: [Rule] -> [Transition] -> [Formula]
 horsToHoMSL rules trans =
   let env = inferSorts (rules, trans)
+      -- States
       qs = HashMap.keys $ HashMap.filter isPredicate env
-   in foldMap (mkTransitionClause env) trans
+      -- Terminals
+      fs = HashMap.keys $ HashMap.filterWithKey (\f s -> 
+                                  not (isPredicate s) && isLower (head f)) env
+   in foldMap (mkOpTransitionClauses env trans) [ (q, f) | q <- qs, f <- fs ]
         <> foldMap (mkRuleClauses qs env) rules
 
 -- * Constructing HoMSL clauses.
 
 -- | Make a transition clause.
-mkTransitionClause :: HashMap.HashMap String Sort -> Transition -> [Formula]
-mkTransitionClause env (Transition q f rhs) = [getFormula]
+mkOpTransitionClauses :: HashMap.HashMap String Sort -> [Transition] -> (String, String) -> [Formula]
+mkOpTransitionClauses env trans (q, f) = 
+  let relevantTrans = filter (\(Transition q' f' _) -> q == q' && f == f') trans
+   in 
+    if null relevantTrans
+      then [mkFormula IntMap.empty]
+      else [mkFormula rhsOp | rhsOp <- opRHSs (map rhs relevantTrans) ]
   where
-    getFormula :: Formula
-    getFormula =
+    -- Construct the opposite of all right-hand sides.
+    opRHSs :: [IntMap.IntMap [String]] -> [IntMap.IntMap [String]]
+    opRHSs rhss = do
+      -- For each rhs choose an atom that violates the body 
+      violators <- mapM (\rhs -> [ IntMap.singleton i [p]
+                                    | (i, ps) <- IntMap.toList rhs, p <- ps ]) rhss
+      pure (fold violators)
+
+    -- Make a transition with a given rhs.
+    mkFormula :: IntMap.IntMap [String] -> Formula
+    mkFormula rhs =
       case HashMap.lookup f env of
         Nothing -> error "State not in scope!"
         Just s ->
@@ -35,16 +56,17 @@ mkTransitionClause env (Transition q f rhs) = [getFormula]
               body =
                 Conj
                   [ Atom (App (Sym p) (Var (xs !! (i - 1))))
-                    | (i, p) <- IntMap.toList rhs
+                    | (i, ps) <- IntMap.toList rhs,
+                      p <- ps
                   ]
            in Clause xs head body
 
 -- | Make clauses for each state and production rule.
 mkRuleClauses :: [String] -> HashMap.HashMap String Sort -> Rule -> [Formula]
-mkRuleClauses qs env (Rule f xs rhs) = [getFormula q | q <- qs]
+mkRuleClauses qs env (Rule f xs rhs) = [mkFormula q | q <- qs]
   where
-    getFormula :: String -> Formula
-    getFormula q =
+    mkFormula :: String -> Formula
+    mkFormula q =
       case HashMap.lookup f env of
         Nothing -> error "State not in scope!"
         Just s ->
