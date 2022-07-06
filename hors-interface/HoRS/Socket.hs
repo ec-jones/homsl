@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 
@@ -14,20 +15,19 @@ module HoRS.Socket
     receive,
     close,
     fix,
+    forever,
 
     -- * Analysis
     getClauses,
-
-    -- * Testing
-    server,
   )
 where
 
+import qualified Data.HashSet as HashSet
 import qualified Control.Monad.RWS as RWS
-import qualified Control.Selective as Selective
 import qualified Data.IntMap as IntMap
 import HoMSL.Rewrite
 import HoMSL.Syntax
+import System.CPUTime
 import HoMSL.Syntax.Parser
 
 -- * Socket Interface
@@ -68,9 +68,10 @@ instance Applicative (SocketM soc) where
     x <- mx
     pure (f x)
 
-instance Selective.Selective (SocketM soc) where
-  select cond m =
-    Branch (Pure undefined) (m <*> Pure undefined)
+instance Selective (SocketM soc) where
+  select cond m = do
+    _ <- cond
+    Branch (m >>= \f -> pure (f undefined)) (Pure undefined)
 
 instance Monad (SocketM soc) where
   Pure a >>= k = k a
@@ -131,6 +132,15 @@ close soc =
 fix :: Socket b => b -> (b -> (b -> SocketM soc ()) -> SocketM soc ()) -> SocketM soc ()
 fix x f =
   Fix x f (Pure ())
+
+forever :: SocketM soc () -> SocketM soc ()
+forever m = fix () $ \() k -> do
+  m
+  k ()
+
+branch :: Bool -> SocketM soc a -> SocketM soc a
+branch _ m1 m2 = Branch m1 m2
+
 
 -- * Analysis
 
@@ -208,7 +218,7 @@ getClauses m =
    in mkGoal main : [cls | q <- states, cls <- mkClause q <$> IntMap.toList defns]
   where
     go :: SocketM SocketId c -> AnalysisM (Term Id)
-    go (Pure a) = pure (Var cont)
+    go (Pure _) = pure (Var cont)
     go (Socket k) = do
       liftedArgs <- getLiftedArgs
 
@@ -256,7 +266,7 @@ getClauses m =
 
       fun <- fresh
       withSocket $ \x -> do
-        defn <- go (f x (\x -> Call fun (liftedArgs ++ getSockets x) (Pure ())))
+        defn <- go (f x (\x' -> Call fun (liftedArgs ++ getSockets x') (Pure ())))
         emitFun fun defn
 
       go (Call fun (liftedArgs ++ getSockets x) k)
@@ -300,14 +310,14 @@ states =
     "Bound",
     "Listening",
     "Open",
-    "Closed",
+    "Close",
     "Untracked"
   ]
 
 -- * Testing
 
-server :: SocketM soc ()
-server = do
+test1 :: SocketM soc ()
+test1 = do
   soc <- socket
   bind soc 0000
   listen soc
@@ -317,10 +327,41 @@ server = do
     send x "pong"
     k ()
 
-test :: IO ()
-test = do
-  automaton <- parseProgram <$> readFile "input/socket"
-  let prog = getClauses server
-      clauses = saturate (automaton ++ prog)
-  RWS.forM_ clauses $ \clause ->
-    print clause
+test2 :: forall soc. SocketM soc ()
+test2 = do
+  sock <- socket
+  bind sock 0000
+  listen sock
+  (csock, _) <- accept sock
+  loop csock
+  where
+    loop:: soc -> SocketM soc ()
+    loop csock = fix () $ \() k -> do
+      sent <- send csock "Hi!"
+      k ()
+
+test3 :: forall soc. SocketM soc ()
+test3 = do
+  soc <- socket
+  bind soc 1000
+  listen soc
+  (x, y) <- accept soc
+  fix () $ \() k -> do
+    msg <- receive x
+    branch (msg == "close")
+      (close x >> k ())
+      (k ())
+
+test :: (forall soc. SocketM soc ()) -> IO ()
+test m = do
+  !automaton <- parseProgram <$> readFile "input/socket"
+  let !prog = getClauses m
+  RWS.forM_ prog print
+
+  !t0 <- getCPUTime
+  let clauses = saturate (automaton ++ prog)
+  print (AFf `HashSet.member` clauses)
+  !t1 <- getCPUTime
+  print (fromIntegral (t1 - t0) / 1000000000.0)
+  
+  RWS.forM_ clauses print
