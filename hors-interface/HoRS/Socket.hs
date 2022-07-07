@@ -68,11 +68,6 @@ instance Applicative (SocketM soc) where
     x <- mx
     pure (f x)
 
-instance Selective (SocketM soc) where
-  select cond m = do
-    _ <- cond
-    Branch (m >>= \f -> pure (f undefined)) (Pure undefined)
-
 instance Monad (SocketM soc) where
   Pure a >>= k = k a
   Socket k >>= k' =
@@ -138,7 +133,7 @@ forever m = fix () $ \() k -> do
   m
   k ()
 
-branch :: Bool -> SocketM soc a -> SocketM soc a
+branch :: Bool -> SocketM soc a -> SocketM soc a -> SocketM soc a
 branch _ m1 m2 = Branch m1 m2
 
 
@@ -352,11 +347,17 @@ test3 = do
       (close x >> k ())
       (k ())
 
+test4 :: forall soc. SocketM soc ()
+test4 = do
+  socs <- RWS.replicateM 3 socket
+  RWS.forM_ socs $ \soc -> do
+    connect soc 1000
+    close soc
+
 test :: (forall soc. SocketM soc ()) -> IO ()
 test m = do
   !automaton <- parseProgram <$> readFile "input/socket"
   let !prog = getClauses m
-  RWS.forM_ prog print
 
   !t0 <- getCPUTime
   let clauses = saturate (automaton ++ prog)

@@ -5,7 +5,6 @@ module HoMSL.Rewrite
 
 import Control.Applicative
 import Control.Monad.Logic
-import Control.Monad.Memoization
 import Control.Monad.Writer
 import Control.Monad.ST
 import Data.Foldable

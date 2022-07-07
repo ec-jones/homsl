@@ -122,7 +122,7 @@ runBenchmark path = do
 
 time :: IO () -> IO (Maybe Float)
 time m = do
-  !t0 <- getCPUTime 
-  !res <- timeout 30000000 m
+  !t0 <- getCPUTime
+  !res <- timeout 60000000 m -- allow 1 minute
   !t1 <- getCPUTime
   pure (fromIntegral (t1 - t0) / 1000000000.0 <$ res)

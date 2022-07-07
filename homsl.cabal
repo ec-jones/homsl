@@ -13,7 +13,6 @@ library
   other-modules:      HoMSL.Syntax.Term,
                       HoMSL.Syntax.Formula,
                       HoMSL.Syntax.Subst,
-                      Control.Monad.Memoization
 
   hs-source-dirs:     src
 

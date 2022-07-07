@@ -11,6 +11,7 @@ module HoMSL.Syntax.Subst
     mkRenaming,
     lookupSubst,
     extendSubst,
+    deleteSubst,
 
     -- * Substable
     Substable (..),
@@ -92,6 +93,13 @@ extendSubst x term theta =
   Subst {
     substMap = HashMap.insert x term (substMap theta),
     substScope = freeVars term <> substScope theta
+  }
+
+-- | Remove a variable from the domain of a substitution.
+deleteSubst :: Id -> Subst -> Subst
+deleteSubst x theta =
+  theta {
+    substMap = HashMap.delete x (substMap theta)
   }
 
 -- * Substable

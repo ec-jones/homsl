@@ -15,6 +15,7 @@ module HoMSL.Syntax
     pattern Apps,
     termHead,
     isMaybeVar,
+    splitApps,
 
     -- * Formulas,
     Formula,
@@ -43,6 +44,7 @@ module HoMSL.Syntax
     mkRenaming,
     lookupSubst,
     extendSubst,
+    deleteSubst,
 
     -- * Substable
     Substable (..),

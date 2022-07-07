@@ -16,6 +16,7 @@ module HoMSL.Syntax.Term
     pattern Apps,
     termHead,
     isMaybeVar,
+    splitApps,
   )
 where
 
@@ -140,3 +141,10 @@ termHead (Apps f _) = f
 isMaybeVar :: Term a -> Maybe a
 isMaybeVar (Var x) = Just x
 isMaybeVar _ = Nothing
+
+-- | Split a term into a function with n arguments.
+splitApps :: Term a -> Int -> Maybe (Term a, [Term a])
+splitApps t 0 = pure (t, [])
+splitApps (App fun arg) n = do
+  (fun', args) <- splitApps fun (n - 1)
+  pure (fun', arg : args)
